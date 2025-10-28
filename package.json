@@ -1,6 +1,14 @@
 {
+  "name": "sova-btc-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for minting and transferring sovaBTC on Sova Testnet",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "dotenv": "^17.2.3",
+    "node-telegram-bot-api": "^0.66.0",
     "web3": "^4.16.0"
   }
 }
