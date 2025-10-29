@@ -8,7 +8,11 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SOVA_TESTNET_RPC = process.env.RPC_URL || 'https://rpc.testnet.sova.io';
 const SOVA_BTC_CONTRACT = process.env.CONTRACT_ADDRESS || '0x5Db496debB227455cE9f482f9E443f1073a55456';
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const ALLOWED_USERS = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.split(',') : [];
+const ALLOWED_USERS = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.split(',').map(id => id.trim()) : [];
+
+// File paths
+const WALLET_FILE = 'wallet.json';
+const CLAIMS_FILE = 'claims.json';
 
 // ABI untuk fungsi mint - coba berbagai kemungkinan signature
 const MINT_ABI = [
@@ -100,13 +104,24 @@ if (!BOT_TOKEN || !PRIVATE_KEY) {
   process.exit(1);
 }
 
+// Warning untuk ALLOWED_USERS
+if (ALLOWED_USERS.length === 0) {
+  console.warn('⚠️  WARNING: ALLOWED_USERS kosong - SEMUA USER BISA AKSES ADMIN COMMANDS!');
+  console.warn('⚠️  Untuk production, set ALLOWED_USERS dengan User ID Anda di .env');
+}
+
 // Inisialisasi Web3
 function initializeWeb3() {
-  web3 = new Web3(SOVA_TESTNET_RPC);
-  const privateKeyWithPrefix = PRIVATE_KEY.startsWith('0x') ? PRIVATE_KEY : '0x' + PRIVATE_KEY;
-  account = web3.eth.accounts.privateKeyToAccount(privateKeyWithPrefix);
-  web3.eth.accounts.wallet.add(account);
-  contract = new web3.eth.Contract(MINT_ABI, SOVA_BTC_CONTRACT);
+  try {
+    web3 = new Web3(SOVA_TESTNET_RPC);
+    const privateKeyWithPrefix = PRIVATE_KEY.startsWith('0x') ? PRIVATE_KEY : '0x' + PRIVATE_KEY;
+    account = web3.eth.accounts.privateKeyToAccount(privateKeyWithPrefix);
+    web3.eth.accounts.wallet.add(account);
+    contract = new web3.eth.Contract(MINT_ABI, SOVA_BTC_CONTRACT);
+  } catch (error) {
+    console.error('❌ Failed to initialize Web3:', error.message);
+    process.exit(1);
+  }
 }
 
 // Inisialisasi Bot
@@ -128,28 +143,30 @@ function isAuthorized(userId) {
 
 // Format number dengan decimals
 function formatTokenAmount(amount, decimals) {
-  const divisor = BigInt(10) ** BigInt(decimals);
-  const wholePart = BigInt(amount) / divisor;
-  const fractionalPart = BigInt(amount) % divisor;
+  try {
+    const divisor = BigInt(10) ** BigInt(decimals);
+    const wholePart = BigInt(amount) / divisor;
+    const fractionalPart = BigInt(amount) % divisor;
 
-  if (fractionalPart === 0n) {
-    return wholePart.toString();
+    if (fractionalPart === 0n) {
+      return wholePart.toString();
+    }
+
+    const fractionalStr = fractionalPart.toString().padStart(Number(decimals), '0');
+    const trimmedFractional = fractionalStr.replace(/0+$/, '');
+
+    if (trimmedFractional === '') {
+      return wholePart.toString();
+    }
+
+    return `${wholePart}.${trimmedFractional}`;
+  } catch (error) {
+    console.error('Error formatting token amount:', error.message);
+    return '0';
   }
-
-  const fractionalStr = fractionalPart.toString().padStart(Number(decimals), '0');
-  const trimmedFractional = fractionalStr.replace(/0+$/, '');
-
-  if (trimmedFractional === '') {
-    return wholePart.toString();
-  }
-
-  return `${wholePart}.${trimmedFractional}`;
 }
 
 // Wallet Management Functions
-const WALLET_FILE = 'wallet.json';
-const CLAIMS_FILE = 'claims.json';
-
 function loadWallets() {
   try {
     if (fs.existsSync(WALLET_FILE)) {
@@ -160,6 +177,43 @@ function loadWallets() {
     console.error('Error loading wallets:', e.message);
   }
   return { wallets: [] };
+}
+
+function saveWallets(walletData) {
+  try {
+    fs.writeFileSync(WALLET_FILE, JSON.stringify(walletData, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Error saving wallets:', e.message);
+    return false;
+  }
+}
+
+function createNewWallets(count) {
+  try {
+    const walletData = loadWallets();
+    const newWallets = [];
+
+    for (let i = 0; i < count; i++) {
+      const newAccount = web3.eth.accounts.create();
+      newWallets.push({
+        address: newAccount.address,
+        privateKey: newAccount.privateKey,
+        createdAt: new Date().toISOString(),
+        hasMinted: false,
+        lastMintTx: null
+      });
+    }
+
+    walletData.wallets.push(...newWallets);
+    saveWallets(walletData);
+
+    console.log(`✅ Created ${count} new wallets. Total: ${walletData.wallets.length}`);
+    return newWallets;
+  } catch (error) {
+    console.error('Error creating wallets:', error.message);
+    throw error;
+  }
 }
 
 // Claims Database Functions
@@ -186,35 +240,45 @@ function saveClaims(claimsData) {
 }
 
 function canClaimToday(userId) {
-  const claimsData = loadClaims();
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  try {
+    const claimsData = loadClaims();
+    const today = new Date().toISOString().split('T')[0];
 
-  if (!claimsData.claims[userId]) {
-    return true;
+    if (!claimsData.claims[userId]) {
+      return true;
+    }
+
+    return claimsData.claims[userId].lastClaimDate !== today;
+  } catch (error) {
+    console.error('Error checking claim eligibility:', error.message);
+    return false;
   }
-
-  return claimsData.claims[userId].lastClaimDate !== today;
 }
 
 function recordClaim(userId, address, txHash) {
-  const claimsData = loadClaims();
-  const today = new Date().toISOString().split('T')[0];
+  try {
+    const claimsData = loadClaims();
+    const today = new Date().toISOString().split('T')[0];
 
-  if (!claimsData.claims[userId]) {
-    claimsData.claims[userId] = {
-      lastClaimDate: today,
-      lastAddress: address,
-      lastTxHash: txHash,
-      totalClaims: 1
-    };
-  } else {
-    claimsData.claims[userId].lastClaimDate = today;
-    claimsData.claims[userId].lastAddress = address;
-    claimsData.claims[userId].lastTxHash = txHash;
-    claimsData.claims[userId].totalClaims = (claimsData.claims[userId].totalClaims || 0) + 1;
+    if (!claimsData.claims[userId]) {
+      claimsData.claims[userId] = {
+        lastClaimDate: today,
+        lastAddress: address,
+        lastTxHash: txHash,
+        totalClaims: 1
+      };
+    } else {
+      claimsData.claims[userId].lastClaimDate = today;
+      claimsData.claims[userId].lastAddress = address;
+      claimsData.claims[userId].lastTxHash = txHash;
+      claimsData.claims[userId].totalClaims = (claimsData.claims[userId].totalClaims || 0) + 1;
+    }
+
+    saveClaims(claimsData);
+    console.log(`📝 Recorded claim for user ${userId} to ${address}`);
+  } catch (error) {
+    console.error('Error recording claim:', error.message);
   }
-
-  saveClaims(claimsData);
 }
 
 // User state tracking for faucet flow
@@ -232,35 +296,35 @@ function clearUserState(userId) {
   delete userStates[userId];
 }
 
-function saveWallets(walletData) {
+// Helper: Add temporary wallet to web3
+function addTemporaryWallet(privateKey) {
   try {
-    fs.writeFileSync(WALLET_FILE, JSON.stringify(walletData, null, 2));
-    return true;
-  } catch (e) {
-    console.error('Error saving wallets:', e.message);
-    return false;
+    const tempAccount = web3.eth.accounts.privateKeyToAccount(privateKey);
+    web3.eth.accounts.wallet.add(tempAccount);
+    return tempAccount.address;
+  } catch (error) {
+    console.error('Error adding temporary wallet:', error.message);
+    throw error;
   }
 }
 
-function createNewWallets(count) {
-  const walletData = loadWallets();
-  const newWallets = [];
-
-  for (let i = 0; i < count; i++) {
-    const newAccount = web3.eth.accounts.create();
-    newWallets.push({
-      address: newAccount.address,
-      privateKey: newAccount.privateKey,
-      createdAt: new Date().toISOString(),
-      hasMinted: false,
-      lastMintTx: null
-    });
+// Helper: Remove temporary wallet from web3
+function removeTemporaryWallet(address) {
+  try {
+    web3.eth.accounts.wallet.remove(address);
+  } catch (error) {
+    console.error('Error removing temporary wallet:', error.message);
   }
+}
 
-  walletData.wallets.push(...newWallets);
-  saveWallets(walletData);
-
-  return newWallets;
+// Helper: Check if balance is sufficient
+function hasMinimumBalance(balance, minAmount = '0') {
+  try {
+    return BigInt(balance) > BigInt(minAmount);
+  } catch (error) {
+    console.error('Error checking balance:', error.message);
+    return false;
+  }
 }
 
 // Command: /start
@@ -270,7 +334,6 @@ bot.onText(/\/start/, (msg) => {
   const userId = msg.from.id;
 
   if (isAuthorized(userId)) {
-    // Admin welcome message
     const adminMsg = `
 🤖 *Sova BTC Faucet Bot - Admin Panel*
 
@@ -282,6 +345,7 @@ Anda login sebagai *Administrator*.
 /mint - Mint sovaBTC dari wallet utama
 /balance - Cek ETH balance
 /info - Info wallet & network
+/transfer <address> <amount> - Transfer sovaBTC ke address
 
 *🔥 Multi Wallet (Mass Minting):*
 /createwallets <n> - Buat banyak wallet
@@ -298,9 +362,10 @@ Anda login sebagai *Administrator*.
 
 🔐 Your User ID: \`${userId}\`
     `;
-    bot.sendMessage(chatId, adminMsg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, adminMsg, { parse_mode: 'Markdown' }).catch(err => {
+      console.error('Error sending admin welcome message:', err.message);
+    });
   } else {
-    // Regular user welcome message
     const userMsg = `
 🤖 *Sova BTC Faucet Bot*
 
@@ -323,7 +388,9 @@ Selamat datang di Sova BTC Faucet!
 
 💡 User ID Anda: \`${userId}\`
     `;
-    bot.sendMessage(chatId, userMsg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, userMsg, { parse_mode: 'Markdown' }).catch(err => {
+      console.error('Error sending user welcome message:', err.message);
+    });
   }
 });
 
@@ -333,14 +400,16 @@ bot.onText(/\/help/, (msg) => {
   const userId = msg.from.id;
 
   if (isAuthorized(userId)) {
-    // Admin help
     const adminHelpMsg = `
 📖 *Panduan Admin - Sova BTC Faucet*
 
-*🪙 Single Mint:*
+*🪙 Single Wallet Operations:*
 /mint → Mint sovaBTC dari wallet utama
 /balance → Lihat ETH balance
 /info → Info wallet & network
+/transfer <address> <amount> → Transfer sovaBTC
+   Contoh: \`/transfer 0x742d35...f0bEb 1000000\`
+   (amount dalam satuan terkecil, 8 decimals)
 
 *🔥 Mass Minting (Multi Wallet):*
 1️⃣ /createwallets <jumlah>
@@ -370,9 +439,10 @@ bot.onText(/\/help/, (msg) => {
 • claims.json tracking klaim user harian
 • Pastikan wallet utama punya cukup ETH untuk faucet
     `;
-    bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' }).catch(err => {
+      console.error('Error sending admin help:', err.message);
+    });
   } else {
-    // User help
     const userHelpMsg = `
 📖 *Panduan Pengguna - Sova BTC Faucet*
 
@@ -407,7 +477,9 @@ bot.onText(/\/help/, (msg) => {
 
 Ketik /faucet untuk mulai claim!
     `;
-    bot.sendMessage(chatId, userHelpMsg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, userHelpMsg, { parse_mode: 'Markdown' }).catch(err => {
+      console.error('Error sending user help:', err.message);
+    });
   }
 });
 
@@ -434,6 +506,8 @@ bot.onText(/\/info/, async (msg) => {
   bot.sendMessage(chatId, infoMsg, {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
+  }).catch(err => {
+    console.error('Error sending info:', err.message);
   });
 });
 
@@ -452,10 +526,22 @@ bot.onText(/\/balance/, async (msg) => {
     const balance = await web3.eth.getBalance(account.address);
     const ethBalance = web3.utils.fromWei(balance, 'ether');
 
+    // Get sovaBTC balance
+    let sovaBTCBalance = '0';
+    let decimals = 8;
+    try {
+      const tokenBalance = await contract.methods.balanceOf(account.address).call();
+      decimals = await contract.methods.decimals().call();
+      sovaBTCBalance = formatTokenAmount(tokenBalance.toString(), decimals);
+    } catch (e) {
+      console.log('Cannot get sovaBTC balance:', e.message);
+    }
+
     const balanceMsg = `
 💰 *Balance Info*
 
 ETH: \`${ethBalance}\` ETH
+sovaBTC: \`${sovaBTCBalance}\` sovaBTC
 Address: \`${account.address}\`
 
 🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
@@ -466,7 +552,228 @@ Address: \`${account.address}\`
       disable_web_page_preview: true
     });
   } catch (error) {
+    console.error('Balance check error:', error);
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+  }
+});
+
+// Command: /transfer <address> <amount>
+bot.onText(/\/transfer(?:\s+(\S+))?(?:\s+(\S+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  const toAddress = match[1];
+  const amountStr = match[2];
+
+  // Validate parameters
+  if (!toAddress || !amountStr) {
+    bot.sendMessage(chatId, `❌ Format salah!
+
+*Penggunaan:*
+\`/transfer <address> <amount>\`
+
+*Contoh:*
+\`/transfer 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 5\`
+\`/transfer 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.01\`
+
+*Catatan:*
+• Amount dalam satuan sovaBTC (bukan satuan terkecil)
+• Mendukung desimal (contoh: 0.5, 1.25)
+    `, { parse_mode: 'Markdown' });
+    return;
+  }
+
+  try {
+    // Validate address
+    if (!web3.utils.isAddress(toAddress)) {
+      bot.sendMessage(chatId, `❌ *Alamat tidak valid!*
+
+Alamat harus format EVM yang valid (0x...)
+
+Contoh: \`0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\`
+      `, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Get decimals first
+    let decimals = 8;
+    try {
+      decimals = await contract.methods.decimals().call();
+    } catch (e) {
+      console.log('Using default decimals: 8');
+    }
+
+    // Validate and convert amount from sovaBTC to smallest unit
+    let amount;
+    try {
+      const amountFloat = parseFloat(amountStr);
+      if (isNaN(amountFloat) || amountFloat <= 0) {
+        throw new Error('Amount must be positive');
+      }
+      
+      // Convert to smallest unit (multiply by 10^decimals)
+      const multiplier = BigInt(10) ** BigInt(decimals);
+      const amountParts = amountStr.split('.');
+      
+      if (amountParts.length === 1) {
+        // No decimal point - simple multiplication
+        amount = BigInt(amountParts[0]) * multiplier;
+      } else {
+        // Has decimal point - need to handle carefully
+        const wholePart = BigInt(amountParts[0] || '0');
+        const fractionalPart = amountParts[1] || '';
+        const fractionalPadded = fractionalPart.padEnd(Number(decimals), '0').slice(0, Number(decimals));
+        const fractionalValue = BigInt(fractionalPadded);
+        
+        amount = wholePart * multiplier + fractionalValue;
+      }
+      
+      if (amount <= 0n) {
+        throw new Error('Amount must be positive');
+      }
+    } catch (e) {
+      bot.sendMessage(chatId, `❌ *Amount tidak valid!*
+
+Amount harus angka positif.
+
+Contoh yang benar:
+• 5 (5 sovaBTC)
+• 0.5 (0.5 sovaBTC)
+• 1.25 (1.25 sovaBTC)
+• 0.01 (0.01 sovaBTC)
+      `, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `
+💸 *Transferring sovaBTC...*
+
+⏳ Step 1/4: Checking balances...
+    `, { parse_mode: 'Markdown' });
+
+    // Check ETH balance for gas
+    const ethBalance = await web3.eth.getBalance(account.address);
+    if (!hasMinimumBalance(ethBalance, '0')) {
+      bot.editMessageText('❌ Balance ETH tidak cukup untuk gas fee!', {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+      return;
+    }
+
+    // Check sovaBTC balance
+    const sovaBTCBalance = await contract.methods.balanceOf(account.address).call();
+    if (BigInt(sovaBTCBalance) < amount) {
+      bot.editMessageText(`❌ *Balance sovaBTC tidak cukup!*
+
+Tersedia: ${formatTokenAmount(sovaBTCBalance.toString(), decimals)} sovaBTC
+Dibutuhkan: ${formatTokenAmount(amount.toString(), decimals)} sovaBTC
+      `, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id,
+        parse_mode: 'Markdown'
+      });
+      return;
+    }
+
+    await bot.editMessageText(`
+💸 *Transferring sovaBTC...*
+
+✅ Step 1/4: Balance checked
+⏳ Step 2/4: Validating recipient...
+    `, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    // Additional validation - check if sending to self
+    if (toAddress.toLowerCase() === account.address.toLowerCase()) {
+      bot.editMessageText('❌ Tidak bisa transfer ke wallet sendiri!', {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+      return;
+    }
+
+    await bot.editMessageText(`
+💸 *Transferring sovaBTC...*
+
+✅ Step 1/4: Balance checked
+✅ Step 2/4: Recipient validated
+⏳ Step 3/4: Estimating gas...
+    `, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    // Execute transfer
+    const transferMethod = contract.methods.transfer(toAddress, amount.toString());
+    const gasEstimate = await transferMethod.estimateGas({ from: account.address });
+    const gasLimit = Math.floor(Number(gasEstimate) * 1.2);
+
+    await bot.editMessageText(`
+💸 *Transferring sovaBTC...*
+
+✅ Step 1/4: Balance checked
+✅ Step 2/4: Recipient validated
+✅ Step 3/4: Gas estimated (${gasEstimate.toString()})
+⏳ Step 4/4: Sending transaction...
+    `, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    const tx = await transferMethod.send({
+      from: account.address,
+      gas: gasLimit.toString()
+    });
+
+    console.log(`[TRANSFER] Sent ${formatTokenAmount(amount.toString(), decimals)} sovaBTC to ${toAddress}: ${tx.transactionHash}`);
+
+    // Success message
+    const successMsg = `
+✅ *Transfer Berhasil!*
+
+💰 Amount: *${formatTokenAmount(amount.toString(), decimals)} sovaBTC*
+📍 To: \`${toAddress}\`
+📄 TX Hash: \`${tx.transactionHash}\`
+⛽ Gas Used: ${tx.gasUsed.toString()}
+
+🔗 [View on Explorer](https://explorer.testnet.sova.io/tx/${tx.transactionHash})
+
+From: \`${account.address}\`
+    `;
+
+    bot.editMessageText(successMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+
+  } catch (error) {
+    console.error('Transfer error:', error);
+    const errorMsg = `❌ *Transfer Failed!*
+
+Error: \`${error.message}\`
+
+💡 *Possible reasons:*
+• Insufficient sovaBTC balance
+• Insufficient ETH for gas
+• Invalid recipient address
+• Network error
+• Contract error
+
+🔍 Cek detail error di console
+    `;
+    bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
   }
 });
 
@@ -480,18 +787,18 @@ bot.onText(/\/mint$/, async (msg) => {
   }
 
   try {
-    // Status awal
     const statusMsg = await bot.sendMessage(chatId, `
 🚀 *Minting sovaBTC...*
 
 ⏳ Step 1/4: Checking wallet...
     `, { parse_mode: 'Markdown' });
 
-    // Cek balance
+    // Cek balance - FIX: Proper BigInt conversion
     const balance = await web3.eth.getBalance(account.address);
     const ethBalance = web3.utils.fromWei(balance, 'ether');
 
-    if (balance === 0n) {
+    // FIX: Convert balance to BigInt properly before comparison
+    if (!hasMinimumBalance(balance, '0')) {
       bot.editMessageText('❌ Balance ETH tidak cukup untuk gas fee!', {
         chat_id: chatId,
         message_id: statusMsg.message_id
@@ -542,7 +849,7 @@ Gunakan wallet lain untuk mint lagi.
     try {
       const maxSupplyBase = await contract.methods.MAX_SUPPLY().call();
       const totalSupply = await contract.methods.totalSupply().call();
-      let decimals = 8; // Default BTC decimals
+      let decimals = 8;
 
       try {
         decimals = await contract.methods.decimals().call();
@@ -550,7 +857,6 @@ Gunakan wallet lain untuk mint lagi.
         console.log('Cannot get decimals, using default 8:', e.message);
       }
 
-      // MAX_SUPPLY dari contract adalah base value, harus dikali 10^decimals
       const maxSupplyWithDecimals = BigInt(maxSupplyBase) * (BigInt(10) ** BigInt(decimals));
 
       console.log('MAX_SUPPLY (base):', maxSupplyBase.toString());
@@ -683,7 +989,7 @@ bot.onText(/\/createwallets(?:\s+(\d+))?/, async (msg, match) => {
     const newWallets = createNewWallets(count);
     const walletData = loadWallets();
 
-    const msg = `✅ *${count} Wallets Created!*
+    const responseMsg = `✅ *${count} Wallets Created!*
 
 Total wallets: ${walletData.wallets.length}
 
@@ -695,8 +1001,9 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 🔐 Jangan share private keys!
     `;
 
-    bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, responseMsg, { parse_mode: 'Markdown' });
   } catch (error) {
+    console.error('Create wallets error:', error);
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
 });
@@ -775,8 +1082,8 @@ Gunakan /walletstatus untuk cek detail
     });
 
   } catch (error) {
-    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Fund error:', error);
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
 });
 
@@ -805,13 +1112,14 @@ bot.onText(/\/mintall/, async (msg) => {
 
     for (let i = 0; i < walletData.wallets.length; i++) {
       const wallet = walletData.wallets[i];
-
-      await bot.editMessageText(`⏳ Minting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
-        chat_id: chatId,
-        message_id: statusMsg.message_id
-      });
+      let tempWalletAddress = null;
 
       try {
+        await bot.editMessageText(`⏳ Minting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        });
+
         // Check if already minted
         const hasMinted = await contract.methods.hasMinted(wallet.address).call();
         if (hasMinted) {
@@ -820,9 +1128,16 @@ bot.onText(/\/mintall/, async (msg) => {
           continue;
         }
 
-        // Add wallet to web3 temporarily
-        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
-        web3.eth.accounts.wallet.add(tempAccount);
+        // Check balance
+        const balance = await web3.eth.getBalance(wallet.address);
+        if (!hasMinimumBalance(balance, '0')) {
+          console.log(`Skipped ${wallet.address}: no balance`);
+          skippedCount++;
+          continue;
+        }
+
+        // FIX: Add wallet in try block and track address for cleanup
+        tempWalletAddress = addTemporaryWallet(wallet.privateKey);
 
         // Mint
         const mintMethod = contract.methods.mint();
@@ -837,26 +1152,30 @@ bot.onText(/\/mintall/, async (msg) => {
         wallet.lastMintTx = tx.transactionHash;
         successCount++;
 
-        // Remove from web3 wallet
-        web3.eth.accounts.wallet.remove(wallet.address);
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
 
       } catch (e) {
         console.error(`Failed to mint from ${wallet.address}:`, e.message);
         failCount++;
+      } finally {
+        // FIX: Always cleanup temporary wallet
+        if (tempWalletAddress) {
+          removeTemporaryWallet(tempWalletAddress);
+        }
       }
     }
 
+    // Save updated wallet data
     saveWallets(walletData);
 
     const resultMsg = `✅ *Minting Complete!*
 
 ✅ Success: ${successCount}
-⏭️ Skipped (already minted): ${skippedCount}
+⏭️ Skipped (already minted/no balance): ${skippedCount}
 ❌ Failed: ${failCount}
 
-Total wallets: ${walletData.wallets.length}
-
-Gunakan /collectall untuk kumpulkan sovaBTC
+Gunakan /walletstatus untuk cek detail
     `;
 
     bot.editMessageText(resultMsg, {
@@ -866,8 +1185,8 @@ Gunakan /collectall untuk kumpulkan sovaBTC
     });
 
   } catch (error) {
-    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Mint all error:', error);
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
 });
 
@@ -893,57 +1212,75 @@ bot.onText(/\/collectall/, async (msg) => {
     let decimals = 8;
     try {
       decimals = await contract.methods.decimals().call();
-    } catch (e) {}
+    } catch (e) {
+      console.log('Using default decimals: 8');
+    }
 
     let totalCollected = BigInt(0);
     let successCount = 0;
     let failCount = 0;
+    let skippedCount = 0;
 
     for (let i = 0; i < walletData.wallets.length; i++) {
       const wallet = walletData.wallets[i];
-
-      await bot.editMessageText(`⏳ Collecting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
-        chat_id: chatId,
-        message_id: statusMsg.message_id
-      });
+      let tempWalletAddress = null;
 
       try {
-        // Check balance
-        const balance = await contract.methods.balanceOf(wallet.address).call();
+        await bot.editMessageText(`⏳ Collecting: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        });
 
-        if (BigInt(balance) === 0n) {
-          console.log(`Skipped ${wallet.address}: no balance`);
+        // Check sovaBTC balance
+        const sovaBTCBalance = await contract.methods.balanceOf(wallet.address).call();
+
+        if (!hasMinimumBalance(sovaBTCBalance, '0')) {
+          console.log(`Skipped ${wallet.address}: no sovaBTC`);
+          skippedCount++;
           continue;
         }
 
-        // Add wallet to web3 temporarily
-        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
-        web3.eth.accounts.wallet.add(tempAccount);
+        // Check ETH balance for gas
+        const ethBalance = await web3.eth.getBalance(wallet.address);
+        if (!hasMinimumBalance(ethBalance, '0')) {
+          console.log(`Skipped ${wallet.address}: no ETH for gas`);
+          skippedCount++;
+          continue;
+        }
 
-        // Transfer to main wallet
-        const transferMethod = contract.methods.transfer(account.address, balance.toString());
+        // FIX: Add wallet in try block and track address for cleanup
+        tempWalletAddress = addTemporaryWallet(wallet.privateKey);
+
+        // Transfer sovaBTC to main wallet
+        const transferMethod = contract.methods.transfer(account.address, sovaBTCBalance.toString());
         const gasEstimate = await transferMethod.estimateGas({ from: wallet.address });
         const tx = await transferMethod.send({
           from: wallet.address,
           gas: Math.floor(Number(gasEstimate) * 1.2).toString()
         });
 
-        console.log(`Collected ${formatTokenAmount(balance.toString(), decimals)} from ${wallet.address}: ${tx.transactionHash}`);
-        totalCollected += BigInt(balance);
+        console.log(`Collected ${formatTokenAmount(sovaBTCBalance.toString(), decimals)} sovaBTC from ${wallet.address}: ${tx.transactionHash}`);
+        totalCollected += BigInt(sovaBTCBalance);
         successCount++;
 
-        // Remove from web3 wallet
-        web3.eth.accounts.wallet.remove(wallet.address);
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
 
       } catch (e) {
         console.error(`Failed to collect from ${wallet.address}:`, e.message);
         failCount++;
+      } finally {
+        // FIX: Always cleanup temporary wallet
+        if (tempWalletAddress) {
+          removeTemporaryWallet(tempWalletAddress);
+        }
       }
     }
 
     const resultMsg = `✅ *Collection Complete!*
 
 ✅ Success: ${successCount}
+⏭️ Skipped (no balance): ${skippedCount}
 ❌ Failed: ${failCount}
 💰 Total collected: ${formatTokenAmount(totalCollected.toString(), decimals)} sovaBTC
 
@@ -960,8 +1297,8 @@ Main wallet: \`${account.address}\`
     });
 
   } catch (error) {
-    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Collect all error:', error);
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
 });
 
@@ -987,7 +1324,9 @@ bot.onText(/\/walletstatus/, async (msg) => {
     let decimals = 8;
     try {
       decimals = await contract.methods.decimals().call();
-    } catch (e) {}
+    } catch (e) {
+      console.log('Using default decimals: 8');
+    }
 
     let totalETH = BigInt(0);
     let totalSovaBTC = BigInt(0);
@@ -1007,7 +1346,7 @@ bot.onText(/\/walletstatus/, async (msg) => {
       }
     }
 
-    const statusMsg = `📊 *Wallet Status*
+    const statusDisplayMsg = `📊 *Wallet Status*
 
 Total wallets: ${walletData.wallets.length}
 Minted: ${mintedCount}
@@ -1024,11 +1363,127 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
 /collectgas - Collect ETH gas to main wallet
     `;
 
-    bot.sendMessage(chatId, statusMsg, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, statusDisplayMsg, { parse_mode: 'Markdown' });
 
   } catch (error) {
-    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Status error:', error);
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+  }
+});
+
+// Command: /collectgas
+bot.onText(/\/collectgas/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `⏳ Collecting ETH from ${walletData.wallets.length} wallets...\n\nPreparing...`);
+
+    let totalCollected = BigInt(0);
+    let successCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < walletData.wallets.length; i++) {
+      const wallet = walletData.wallets[i];
+      let tempWalletAddress = null;
+
+      try {
+        await bot.editMessageText(`⏳ Collecting ETH: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        });
+
+        // Check ETH balance
+        const balance = await web3.eth.getBalance(wallet.address);
+
+        // Skip if balance too low (less than 0.0005 ETH - not worth collecting)
+        const minBalance = web3.utils.toWei('0.0005', 'ether');
+        if (BigInt(balance) < BigInt(minBalance)) {
+          console.log(`Skipped ${wallet.address}: balance too low (${web3.utils.fromWei(balance, 'ether')} ETH)`);
+          skippedCount++;
+          continue;
+        }
+
+        // FIX: Add wallet in try block and track address for cleanup
+        tempWalletAddress = addTemporaryWallet(wallet.privateKey);
+
+        // Get fresh gas price for each transaction
+        const gasPrice = await web3.eth.getGasPrice();
+
+        // Calculate max gas cost with 2.5x buffer
+        const maxGasCost = BigInt(21000) * BigInt(gasPrice) * BigInt(25) / BigInt(10);
+
+        // Amount to send = balance - max gas cost
+        const amountToSend = BigInt(balance) - maxGasCost;
+
+        // Double check if still enough to send
+        if (amountToSend <= 0n) {
+          console.log(`Skipped ${wallet.address}: insufficient after gas calculation`);
+          skippedCount++;
+          continue;
+        }
+
+        // Send ETH to main wallet with explicit gas price
+        const tx = await web3.eth.sendTransaction({
+          from: wallet.address,
+          to: account.address,
+          value: amountToSend.toString(),
+          gas: 21000,
+          gasPrice: gasPrice.toString()
+        });
+
+        console.log(`Collected ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH from ${wallet.address}: ${tx.transactionHash}`);
+        totalCollected += amountToSend;
+        successCount++;
+
+        // Small delay to avoid nonce issues
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+      } catch (e) {
+        console.error(`Failed to collect ETH from ${wallet.address}:`, e.message);
+        failCount++;
+      } finally {
+        // FIX: Always cleanup temporary wallet
+        if (tempWalletAddress) {
+          removeTemporaryWallet(tempWalletAddress);
+        }
+      }
+    }
+
+    const resultMsg = `✅ *Gas Collection Complete!*
+
+✅ Success: ${successCount}
+⏭️ Skipped (low balance): ${skippedCount}
+❌ Failed: ${failCount}
+💰 Total collected: ${web3.utils.fromWei(totalCollected.toString(), 'ether')} ETH
+
+Main wallet: \`${account.address}\`
+
+🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
+    `;
+
+    bot.editMessageText(resultMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+
+  } catch (error) {
+    console.error('Collect gas error:', error);
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
   }
 });
 
@@ -1084,123 +1539,8 @@ Silakan kirim alamat Anda sekarang:
     `, { parse_mode: 'Markdown' });
 
   } catch (error) {
-    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Faucet error:', error);
-  }
-});
-
-// Command: /collectgas
-bot.onText(/\/collectgas/, async (msg) => {
-  const chatId = msg.chat.id;
-
-  if (!isAuthorized(msg.from.id)) {
-    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
-    return;
-  }
-
-  try {
-    const walletData = loadWallets();
-
-    if (walletData.wallets.length === 0) {
-      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
-      return;
-    }
-
-    const statusMsg = await bot.sendMessage(chatId, `⏳ Collecting ETH from ${walletData.wallets.length} wallets...\n\nPreparing...`);
-
-    let totalCollected = BigInt(0);
-    let successCount = 0;
-    let failCount = 0;
-    let skippedCount = 0;
-
-    for (let i = 0; i < walletData.wallets.length; i++) {
-      const wallet = walletData.wallets[i];
-
-      await bot.editMessageText(`⏳ Collecting ETH: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
-        chat_id: chatId,
-        message_id: statusMsg.message_id
-      });
-
-      try {
-        // Check ETH balance
-        const balance = await web3.eth.getBalance(wallet.address);
-
-        // Skip if balance too low (less than 0.0005 ETH - not worth collecting)
-        const minBalance = web3.utils.toWei('0.0005', 'ether');
-        if (BigInt(balance) < BigInt(minBalance)) {
-          console.log(`Skipped ${wallet.address}: balance too low (${web3.utils.fromWei(balance, 'ether')} ETH)`);
-          skippedCount++;
-          continue;
-        }
-
-        // Add wallet to web3 temporarily
-        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
-        web3.eth.accounts.wallet.add(tempAccount);
-
-        // Get fresh gas price for each transaction
-        const gasPrice = await web3.eth.getGasPrice();
-
-        // Calculate max gas cost with 2.5x buffer
-        const maxGasCost = BigInt(21000) * BigInt(gasPrice) * BigInt(25) / BigInt(10);
-
-        // Amount to send = balance - max gas cost
-        const amountToSend = BigInt(balance) - maxGasCost;
-
-        // Double check if still enough to send
-        if (amountToSend <= 0n) {
-          console.log(`Skipped ${wallet.address}: insufficient after gas calculation`);
-          web3.eth.accounts.wallet.remove(wallet.address);
-          skippedCount++;
-          continue;
-        }
-
-        // Send ETH to main wallet with explicit gas price
-        const tx = await web3.eth.sendTransaction({
-          from: wallet.address,
-          to: account.address,
-          value: amountToSend.toString(),
-          gas: 21000,
-          gasPrice: gasPrice.toString()
-        });
-
-        console.log(`Collected ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH from ${wallet.address}: ${tx.transactionHash}`);
-        totalCollected += amountToSend;
-        successCount++;
-
-        // Remove from web3 wallet
-        web3.eth.accounts.wallet.remove(wallet.address);
-
-        // Small delay to avoid nonce issues
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-      } catch (e) {
-        console.error(`Failed to collect ETH from ${wallet.address}:`, e.message);
-        failCount++;
-      }
-    }
-
-    const resultMsg = `✅ *Gas Collection Complete!*
-
-✅ Success: ${successCount}
-⏭️ Skipped (low balance): ${skippedCount}
-❌ Failed: ${failCount}
-💰 Total collected: ${web3.utils.fromWei(totalCollected.toString(), 'ether')} ETH
-
-Main wallet: \`${account.address}\`
-
-🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
-    `;
-
-    bot.editMessageText(resultMsg, {
-      chat_id: chatId,
-      message_id: statusMsg.message_id,
-      parse_mode: 'Markdown',
-      disable_web_page_preview: true
-    });
-
-  } catch (error) {
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
-    console.error('Collect gas error:', error);
   }
 });
 
@@ -1216,12 +1556,12 @@ bot.on('message', async (msg) => {
     // Handle unknown commands
     if (!text.startsWith('/start') && !text.startsWith('/help') &&
         !text.startsWith('/mint') && !text.startsWith('/balance') &&
-        !text.startsWith('/info') && !text.startsWith('/createwallets') &&
-        !text.startsWith('/fundwallets') && !text.startsWith('/mintall') &&
-        !text.startsWith('/collectall') && !text.startsWith('/collectgas') &&
-        !text.startsWith('/walletstatus') && !text.startsWith('/faucet')) {
+        !text.startsWith('/info') && !text.startsWith('/transfer') &&
+        !text.startsWith('/createwallets') && !text.startsWith('/fundwallets') &&
+        !text.startsWith('/mintall') && !text.startsWith('/collectall') &&
+        !text.startsWith('/collectgas') && !text.startsWith('/walletstatus') &&
+        !text.startsWith('/faucet')) {
 
-      // Check if user is authorized - show different message
       if (isAuthorized(userId)) {
         bot.sendMessage(chatId, '❌ Unknown command. Ketik /help untuk bantuan.');
       } else {
@@ -1257,7 +1597,7 @@ Silakan kirim ulang alamat yang benar, atau ketik /faucet untuk memulai lagi.
         return;
       }
 
-      // Check claim eligibility
+      // Check claim eligibility again (double-check)
       if (!canClaimToday(userId)) {
         clearUserState(userId);
         bot.sendMessage(chatId, '⏳ Anda sudah claim hari ini. Silakan coba lagi besok.');
@@ -1277,10 +1617,12 @@ Alamat: \`${address}\`
       let decimals = 8;
       try {
         decimals = await contract.methods.decimals().call();
-      } catch (e) {}
+      } catch (e) {
+        console.log('Using default decimals: 8');
+      }
 
       // Amount to send (0.001 sovaBTC)
-      const amountToSend = BigInt(100000); // 0.001 with 8 decimals
+      const amountToSend = BigInt(100000);
 
       // Execute transfer
       const transferMethod = contract.methods.transfer(address, amountToSend.toString());
@@ -1333,7 +1675,7 @@ Terima kasih telah menggunakan Sova BTC Faucet! 🚀
     } catch (error) {
       clearUserState(userId);
 
-      let errorMsg = `
+      const errorMsg = `
 ⚠️ *Terjadi Kegagalan*
 
 Maaf, terjadi kegagalan saat mengirim transaksi.
@@ -1356,21 +1698,50 @@ Silakan coba lagi beberapa saat atau hubungi admin.
 
 // Error handling
 bot.on('polling_error', (error) => {
-  console.error('Polling error:', error);
+  console.error('Polling error:', error.code, error.message);
+});
+
+bot.on('error', (error) => {
+  console.error('Bot error:', error);
 });
 
 // Startup
 console.log('🤖 Sova BTC Mint Bot Starting...\n');
+
+// Security warnings
+if (ALLOWED_USERS.length === 0) {
+  console.warn('\n⚠️  =============== SECURITY WARNING ===============');
+  console.warn('⚠️  ALLOWED_USERS is empty!');
+  console.warn('⚠️  ALL users can access admin commands!');
+  console.warn('⚠️  Set ALLOWED_USERS in Replit Secrets for production');
+  console.warn('⚠️  ================================================\n');
+}
+
+if (fs.existsSync(WALLET_FILE)) {
+  console.warn('\n🔐 =============== WALLET.JSON WARNING ===============');
+  console.warn('🔐 wallet.json contains UNENCRYPTED private keys!');
+  console.warn('🔐 DO NOT share this file or commit to git');
+  console.warn('🔐 Keep your Repl private and secure');
+  console.warn('🔐 ====================================================\n');
+}
+
 initializeWeb3();
 console.log('✅ Web3 Initialized');
 console.log(`📍 Wallet: ${account.address}`);
 console.log(`📍 Network: Sova Testnet`);
 console.log(`📍 Contract: ${SOVA_BTC_CONTRACT}`);
+console.log(`📍 Admin Users: ${ALLOWED_USERS.length > 0 ? ALLOWED_USERS.join(', ') : 'ALL (not recommended for production)'}`);
 console.log('\n🚀 Bot is running! Send /start to begin.\n');
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n👋 Shutting down bot...');
+  bot.stopPolling();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n👋 Shutting down bot (SIGTERM)...');
   bot.stopPolling();
   process.exit(0);
 });
