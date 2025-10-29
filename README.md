@@ -1,23 +1,28 @@
+
 # Sova BTC Telegram Bot
 
 ## Overview
-Telegram bot untuk minting dan distribusi sovaBTC token di Sova Testnet. Bot ini menggunakan Web3.js untuk berinteraksi dengan smart contract sovaBTC dan Telegram Bot API untuk interface pengguna.
+Telegram bot untuk minting, distribusi, dan faucet sovaBTC token di Sova Testnet. Bot ini menggunakan Web3.js untuk berinteraksi dengan smart contract sovaBTC dan Telegram Bot API untuk interface pengguna.
 
 **Status:** ✅ Active - Bot configured and ready to run
-**Last Updated:** October 29, 2025
-**Version:** 2.0 (Improved with bug fixes and security enhancements)
+**Last Updated:** December 2024
+**Version:** 2.1 (With Faucet System & User-Friendly Transfer)
 
-## Recent Changes (October 29, 2025)
+## Recent Changes (Latest Version)
 
 ### New Features
-- ✅ Added `/transfer` command for admin to transfer sovaBTC to any address
-- ✅ Enhanced `/balance` command to show both ETH and sovaBTC balance
+- ✅ **Public Faucet System** - Users can claim sovaBTC tokens daily
+- ✅ **Daily Claim Tracking** - One claim per user per day with automatic reset
+- ✅ **User-Friendly Transfer** - Transfer command now accepts sovaBTC amounts directly (e.g., `/transfer <address> 5` instead of smallest units)
+- ✅ **Claims Database** - Persistent claim tracking in claims.json
+- ✅ **User State Management** - Interactive faucet flow with address validation
 
 ### Bug Fixes
 - ✅ Fixed balance check BigInt comparison bug in `/mint` command
 - ✅ Added proper cleanup for temporary wallets in finally blocks (prevents memory leaks)
 - ✅ Fixed ALLOWED_USERS parsing to trim whitespace from user IDs
 - ✅ Improved error handling across all commands
+- ✅ Fixed transfer command to accept decimal amounts in sovaBTC
 
 ### Improvements
 - ✅ Added security warnings for ALLOWED_USERS and wallet.json at startup
@@ -26,23 +31,26 @@ Telegram bot untuk minting dan distribusi sovaBTC token di Sova Testnet. Bot ini
 - ✅ Better try-catch blocks to prevent crashes
 - ✅ Added graceful shutdown handlers (SIGINT, SIGTERM)
 - ✅ Comprehensive input validation for all admin commands
+- ✅ Support for decimal amounts in transfer command (0.5, 1.25, etc.)
 
 ### Security Enhancements
 - ✅ Console warnings when ALLOWED_USERS is empty (all users can access admin commands)
 - ✅ Console warnings about unencrypted wallet.json storage
 - ✅ Proper .gitignore to prevent committing sensitive files
 - ✅ Self-transfer prevention in /transfer command
+- ✅ Dual authorization system (admin vs public users)
 
 ## Project Structure
 ```
 .
-├── index.js           # Main bot application (improved v2.0)
+├── index.js           # Main bot application (improved v2.1)
 ├── package.json       # Node.js dependencies
 ├── .env              # Environment variables (managed by Replit Secrets)
 ├── .gitignore        # Git ignore rules (protects sensitive files)
 ├── wallet.json        # Multi-wallet data (auto-created, not committed)
 ├── claims.json        # Daily claim tracking (auto-created, not committed)
-└── replit.md         # Project documentation
+├── replit.md         # Detailed project documentation
+└── README.md         # This file
 ```
 
 ## Technology Stack
@@ -77,7 +85,11 @@ Telegram bot untuk minting dan distribusi sovaBTC token di Sova Testnet. Bot ini
 - `/mint` - Mint sovaBTC from main wallet (auto amount from contract)
 - `/balance` - Check ETH and sovaBTC balance on Sova Testnet
 - `/info` - Display wallet and network information
-- `/transfer <address> <amount>` - Transfer sovaBTC to any address (amount in smallest unit, 8 decimals)
+- `/transfer <address> <amount>` - Transfer sovaBTC to any address
+  - **New Format:** Amount in sovaBTC (not smallest unit)
+  - Example: `/transfer 0x742d35...f0bEb 5` (sends 5 sovaBTC)
+  - Example: `/transfer 0x742d35...f0bEb 0.5` (sends 0.5 sovaBTC)
+  - Supports decimal amounts
 
 **Multi-Wallet Mass Minting:**
 - `/createwallets <count>` - Create multiple wallets (max 100) and save to wallet.json
@@ -88,19 +100,68 @@ Telegram bot untuk minting dan distribusi sovaBTC token di Sova Testnet. Bot ini
 - `/walletstatus` - Check status and balances of all created wallets
 
 ## Features
+
+### Core Features
 - ✅ Automatic mint eligibility checking (hasMinted status)
 - ✅ Max supply validation before minting
 - ✅ Gas estimation and optimization
 - ✅ Real-time transaction status updates
 - ✅ User authorization system (admin whitelist)
 - ✅ Multi-language support (Indonesian)
+
+### Faucet System
+- ✅ Public faucet for daily token claims
+- ✅ Daily claim limits (1 claim per user per day)
+- ✅ Automatic reset at 00:00 WIB
+- ✅ Address validation for security
+- ✅ Claim history tracking
+- ✅ User-friendly interactive flow
+
+### Mass Minting System
 - ✅ Multi-wallet mass minting automation
 - ✅ Automatic wallet creation and management
 - ✅ Batch funding and minting operations
 - ✅ Token collection to main wallet
-- ✅ Daily claim limits for faucet users
+- ✅ Gas collection to main wallet
+
+### Technical Features
 - ✅ Proper error handling and recovery
 - ✅ Memory leak prevention with cleanup
+- ✅ BigInt support for precise calculations
+- ✅ Decimal amount support in transfers
+- ✅ Self-transfer prevention
+
+## Usage Examples
+
+### For Public Users
+
+**Claim Daily Tokens:**
+1. Send `/faucet` to the bot
+2. Bot will ask for your wallet address
+3. Send your EVM wallet address (e.g., `0x742d35...`)
+4. Receive sovaBTC tokens instantly
+5. Come back tomorrow for next claim
+
+### For Admins
+
+**Transfer Tokens (New Easy Format):**
+```
+/transfer 0x3FAD363a36A7d89D93C6a478BbF18B53191145F2 5
+```
+Sends 5 sovaBTC
+
+```
+/transfer 0x3FAD363a36A7d89D93C6a478BbF18B53191145F2 0.5
+```
+Sends 0.5 sovaBTC
+
+**Mass Minting Workflow:**
+1. Create wallets: `/createwallets 10`
+2. Fund wallets: `/fundwallets`
+3. Mint from all: `/mintall`
+4. Check status: `/walletstatus`
+5. Collect tokens: `/collectall`
+6. Collect gas: `/collectgas`
 
 ## Workflow
 - **Telegram Bot** - Runs `npm start` to start the bot with console output
@@ -111,7 +172,9 @@ Telegram bot untuk minting dan distribusi sovaBTC token di Sova Testnet. Bot ini
 ### Current Security Status
 - ✅ Secrets stored in Replit Secrets (not in code)
 - ✅ .gitignore protects sensitive files
+- ✅ Dual authorization (admin vs public users)
 - ⚠️ wallet.json stores private keys in plaintext (by design for automation)
+- ⚠️ claims.json tracks user claims (non-sensitive)
 - ⚠️ Recommendation: Keep Repl private, never share wallet.json
 
 ### Admin Access Control
@@ -121,6 +184,12 @@ When `ALLOWED_USERS` is empty, **ALL** users can access admin commands. For prod
 3. Restart the bot
 
 Example: `ALLOWED_USERS=123456789,987654321` (multiple admins)
+
+### Faucet Configuration
+- Default claim amount: 0.001 sovaBTC
+- Claim limit: 1x per day per user
+- Reset time: 00:00 WIB daily
+- Main wallet must have sufficient sovaBTC and ETH
 
 ## Known Issues & Solutions
 
@@ -138,19 +207,26 @@ Example: `ALLOWED_USERS=123456789,987654321` (multiple admins)
 - Use separate wallet for faucet operations
 - Don't store large amounts of funds
 
+### Claims.json
+**Status:** Automatically managed by bot
+**Content:** Non-sensitive user claim history
+**Reset:** Daily at 00:00 WIB (automatic)
+
 ## Development Notes
 - Bot uses polling mode to receive Telegram updates
 - Web3 connects to Sova Testnet for blockchain interactions
 - Transaction gas automatically estimated with 20% safety margin
 - All secrets managed via Replit Secrets (no .env commit)
 - Temporary wallets properly cleaned up after use
-- Claims tracked in claims.json with daily reset at 00:00 WIB
+- Claims tracked in claims.json with daily reset
+- Transfer amounts converted from sovaBTC to smallest unit automatically
 
 ## Sova Testnet Information
 - **Network:** Sova Testnet
 - **RPC:** https://rpc.testnet.sova.io
 - **Explorer:** https://explorer.testnet.sova.io
 - **Contract:** 0x5Db496debB227455cE9f482f9E443f1073a55456
+- **Decimals:** 8
 
 ## Troubleshooting
 
@@ -172,6 +248,14 @@ Example: `ALLOWED_USERS=123456789,987654321` (multiple admins)
 2. Check main wallet has sovaBTC tokens
 3. Check main wallet has ETH for gas fees
 4. Review error message for specific issue
+5. Check claims.json for user claim history
+
+### Transfer Command Issues
+1. Ensure amount is in sovaBTC format (not smallest unit)
+2. Use decimal notation (e.g., 0.5, 1.25, 5)
+3. Check balance is sufficient
+4. Verify recipient address is valid
+5. Cannot transfer to own address
 
 ## User Preferences
 - Language: Indonesian
@@ -186,6 +270,9 @@ Example: `ALLOWED_USERS=123456789,987654321` (multiple admins)
 4. Add metrics and monitoring
 5. Support multiple languages
 6. Add webhook mode option (instead of polling)
+7. Implement claim amount customization
+8. Add referral system for faucet
+9. Weekly/monthly claim statistics
 
 ## Support
 For issues or questions:
@@ -193,3 +280,13 @@ For issues or questions:
 2. Review troubleshooting section
 3. Verify all secrets are correctly set
 4. Ensure wallet has sufficient funds
+5. Check replit.md for detailed documentation
+
+## License
+This project is for educational and testing purposes on Sova Testnet.
+
+---
+
+**Maintained by:** Replit Community
+**Bot Type:** Faucet & Admin Management
+**Network:** Sova Testnet Only
