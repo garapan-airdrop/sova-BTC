@@ -110,7 +110,7 @@ function initializeWeb3() {
 }
 
 // Inisialisasi Bot
-const bot = new TelegramBot(BOT_TOKEN, { 
+const bot = new TelegramBot(BOT_TOKEN, {
   polling: {
     interval: 300,
     autoStart: true,
@@ -148,6 +148,7 @@ function formatTokenAmount(amount, decimals) {
 
 // Wallet Management Functions
 const WALLET_FILE = 'wallet.json';
+const CLAIMS_FILE = 'claims.json';
 
 function loadWallets() {
   try {
@@ -159,6 +160,76 @@ function loadWallets() {
     console.error('Error loading wallets:', e.message);
   }
   return { wallets: [] };
+}
+
+// Claims Database Functions
+function loadClaims() {
+  try {
+    if (fs.existsSync(CLAIMS_FILE)) {
+      const data = fs.readFileSync(CLAIMS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error loading claims:', e.message);
+  }
+  return { claims: {} };
+}
+
+function saveClaims(claimsData) {
+  try {
+    fs.writeFileSync(CLAIMS_FILE, JSON.stringify(claimsData, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Error saving claims:', e.message);
+    return false;
+  }
+}
+
+function canClaimToday(userId) {
+  const claimsData = loadClaims();
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+  if (!claimsData.claims[userId]) {
+    return true;
+  }
+
+  return claimsData.claims[userId].lastClaimDate !== today;
+}
+
+function recordClaim(userId, address, txHash) {
+  const claimsData = loadClaims();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!claimsData.claims[userId]) {
+    claimsData.claims[userId] = {
+      lastClaimDate: today,
+      lastAddress: address,
+      lastTxHash: txHash,
+      totalClaims: 1
+    };
+  } else {
+    claimsData.claims[userId].lastClaimDate = today;
+    claimsData.claims[userId].lastAddress = address;
+    claimsData.claims[userId].lastTxHash = txHash;
+    claimsData.claims[userId].totalClaims = (claimsData.claims[userId].totalClaims || 0) + 1;
+  }
+
+  saveClaims(claimsData);
+}
+
+// User state tracking for faucet flow
+const userStates = {};
+
+function setUserState(userId, state) {
+  userStates[userId] = state;
+}
+
+function getUserState(userId) {
+  return userStates[userId] || null;
+}
+
+function clearUserState(userId) {
+  delete userStates[userId];
 }
 
 function saveWallets(walletData) {
@@ -196,13 +267,16 @@ function createNewWallets(count) {
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const username = msg.from.username || msg.from.first_name;
+  const userId = msg.from.id;
 
-  const welcomeMsg = `
-🤖 *Sova BTC Mint Bot*
+  if (isAuthorized(userId)) {
+    // Admin welcome message
+    const adminMsg = `
+🤖 *Sova BTC Faucet Bot - Admin Panel*
 
 Halo ${username}! 👋
 
-Bot ini untuk minting sovaBTC di Sova Testnet.
+Anda login sebagai *Administrator*.
 
 *📝 Single Wallet:*
 /mint - Mint sovaBTC dari wallet utama
@@ -217,20 +291,51 @@ Bot ini untuk minting sovaBTC di Sova Testnet.
 /collectgas - Kumpulkan sisa ETH ke wallet utama
 /walletstatus - Status semua wallet
 
+*🚰 Faucet Management:*
+/faucet - Claim sovaBTC (testing user flow)
+
 /help - Bantuan lengkap
 
-🔐 Your User ID: \`${msg.from.id}\`
-  `;
+🔐 Your User ID: \`${userId}\`
+    `;
+    bot.sendMessage(chatId, adminMsg, { parse_mode: 'Markdown' });
+  } else {
+    // Regular user welcome message
+    const userMsg = `
+🤖 *Sova BTC Faucet Bot*
 
-  bot.sendMessage(chatId, welcomeMsg, { parse_mode: 'Markdown' });
+Halo ${username}! 👋
+
+Selamat datang di Sova BTC Faucet!
+
+*🚰 Cara Claim Token:*
+1. Ketik /faucet
+2. Kirimkan alamat wallet EVM Anda
+3. Terima sovaBTC gratis!
+
+*📋 Aturan:*
+• Maksimal 1 klaim per hari
+• Reset setiap hari jam 00:00 WIB
+• Alamat harus valid (format 0x...)
+
+/help - Panduan lengkap
+/faucet - Mulai claim token
+
+💡 User ID Anda: \`${userId}\`
+    `;
+    bot.sendMessage(chatId, userMsg, { parse_mode: 'Markdown' });
+  }
 });
 
 // Command: /help
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
 
-  const helpMsg = `
-📖 *Panduan Penggunaan*
+  if (isAuthorized(userId)) {
+    // Admin help
+    const adminHelpMsg = `
+📖 *Panduan Admin - Sova BTC Faucet*
 
 *🪙 Single Mint:*
 /mint → Mint sovaBTC dari wallet utama
@@ -257,14 +362,53 @@ bot.onText(/\/help/, (msg) => {
 📊 /walletstatus
    Cek status & balance semua wallet
 
+*🚰 Faucet:*
+/faucet → Claim sovaBTC (test user flow)
+
 *❓ Tips:*
 • wallet.json menyimpan private keys (JANGAN SHARE!)
-• Pastikan wallet utama punya cukup ETH untuk gas
-• Setiap address hanya bisa mint 1x
-• /collectgas akan mengumpulkan sisa ETH (dikurangi gas fee)
-  `;
+• claims.json tracking klaim user harian
+• Pastikan wallet utama punya cukup ETH untuk faucet
+    `;
+    bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' });
+  } else {
+    // User help
+    const userHelpMsg = `
+📖 *Panduan Pengguna - Sova BTC Faucet*
 
-  bot.sendMessage(chatId, helpMsg, { parse_mode: 'Markdown' });
+*🚰 Cara Claim Token sovaBTC:*
+
+1️⃣ Ketik perintah:
+   \`/faucet\`
+
+2️⃣ Bot akan meminta alamat wallet Anda
+
+3️⃣ Kirimkan alamat wallet EVM Anda
+   Contoh: \`0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\`
+
+4️⃣ Bot akan memproses dan mengirim token
+
+*📋 Aturan & Batasan:*
+• ✅ Maksimal 1 klaim per hari
+• ✅ Reset otomatis setiap hari jam 00:00 WIB
+• ✅ Alamat harus valid (format EVM: 0x...)
+• ✅ Gratis, tidak ada biaya
+
+*💡 Tips:*
+• Pastikan alamat yang dikirim BENAR
+• Copy-paste alamat dari wallet Anda
+• Simpan bukti transaksi (Tx Hash)
+• Tunggu konfirmasi dari bot
+
+*🔗 Network Info:*
+• Network: Sova Testnet
+• Explorer: explorer.testnet.sova.io
+• Token: sovaBTC
+
+Ketik /faucet untuk mulai claim!
+    `;
+    bot.sendMessage(chatId, userHelpMsg, { parse_mode: 'Markdown' });
+  }
 });
 
 // Command: /info
@@ -284,12 +428,12 @@ bot.onText(/\/info/, async (msg) => {
 📍 *RPC:* ${SOVA_TESTNET_RPC}
 📍 *Contract:* \`${SOVA_BTC_CONTRACT}\`
 
-🔗 [View Explorer](https://explorer.testnet.sova.io/address/${account.address})
+🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
   `;
 
-  bot.sendMessage(chatId, infoMsg, { 
+  bot.sendMessage(chatId, infoMsg, {
     parse_mode: 'Markdown',
-    disable_web_page_preview: true 
+    disable_web_page_preview: true
   });
 });
 
@@ -317,9 +461,9 @@ Address: \`${account.address}\`
 🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
     `;
 
-    bot.sendMessage(chatId, balanceMsg, { 
+    bot.sendMessage(chatId, balanceMsg, {
       parse_mode: 'Markdown',
-      disable_web_page_preview: true 
+      disable_web_page_preview: true
     });
   } catch (error) {
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
@@ -888,6 +1032,63 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
   }
 });
 
+// Command: /faucet (untuk semua user)
+bot.onText(/\/faucet/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const username = msg.from.username || msg.from.first_name;
+
+  try {
+    // Check if user can claim today
+    if (!canClaimToday(userId)) {
+      const claimsData = loadClaims();
+      const lastClaim = claimsData.claims[userId];
+
+      bot.sendMessage(chatId, `
+⏳ *Sudah Claim Hari Ini*
+
+Halo ${username}, Anda sudah mengklaim token hari ini!
+
+*Detail Klaim Terakhir:*
+📅 Tanggal: ${lastClaim.lastClaimDate}
+📍 Alamat: \`${lastClaim.lastAddress}\`
+🔗 TX: \`${lastClaim.lastTxHash}\`
+📊 Total Klaim: ${lastClaim.totalClaims}x
+
+Silakan coba lagi besok setelah pukul 00:00 WIB untuk reset harian.
+
+💡 Setiap user hanya bisa claim 1x per hari.
+      `, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Set user state to waiting for address
+    setUserState(userId, 'WAITING_FOR_ADDRESS');
+
+    bot.sendMessage(chatId, `
+🚰 *Sova BTC Faucet - Claim Token*
+
+Baik ${username}, mohon kirimkan *alamat wallet EVM* Anda untuk menerima sovaBTC.
+
+*Format alamat yang valid:*
+• Harus dimulai dengan \`0x\`
+• Panjang 42 karakter
+• Contoh: \`0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\`
+
+*Support Networks:*
+✅ Sova Testnet
+✅ Ethereum
+✅ Base, Arbitrum, dll (EVM Compatible)
+
+Silakan kirim alamat Anda sekarang:
+    `, { parse_mode: 'Markdown' });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Faucet error:', error);
+  }
+});
+
 // Command: /collectgas
 bot.onText(/\/collectgas/, async (msg) => {
   const chatId = msg.chat.id;
@@ -1003,19 +1204,154 @@ Main wallet: \`${account.address}\`
   }
 });
 
-// Handle unknown commands
-bot.on('message', (msg) => {
+// Handle faucet address input
+bot.on('message', async (msg) => {
   const text = msg.text;
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const username = msg.from.username || msg.from.first_name;
 
-  if (!text || !text.startsWith('/')) return;
-  if (text.startsWith('/start') || text.startsWith('/help') || 
-      text.startsWith('/mint') || text.startsWith('/balance') || 
-      text.startsWith('/info') || text.startsWith('/createwallets') ||
-      text.startsWith('/fundwallets') || text.startsWith('/mintall') ||
-      text.startsWith('/collectall') || text.startsWith('/collectgas') ||
-      text.startsWith('/walletstatus')) return;
+  // Skip if it's a command
+  if (text && text.startsWith('/')) {
+    // Handle unknown commands
+    if (!text.startsWith('/start') && !text.startsWith('/help') &&
+        !text.startsWith('/mint') && !text.startsWith('/balance') &&
+        !text.startsWith('/info') && !text.startsWith('/createwallets') &&
+        !text.startsWith('/fundwallets') && !text.startsWith('/mintall') &&
+        !text.startsWith('/collectall') && !text.startsWith('/collectgas') &&
+        !text.startsWith('/walletstatus') && !text.startsWith('/faucet')) {
 
-  bot.sendMessage(msg.chat.id, '❌ Unknown command. Ketik /help untuk bantuan.');
+      // Check if user is authorized - show different message
+      if (isAuthorized(userId)) {
+        bot.sendMessage(chatId, '❌ Unknown command. Ketik /help untuk bantuan.');
+      } else {
+        bot.sendMessage(chatId, '❌ Perintah tidak dikenal. Ketik /help untuk bantuan atau /faucet untuk claim token.');
+      }
+    }
+    return;
+  }
+
+  // Check if user is waiting for address input
+  const userState = getUserState(userId);
+
+  if (userState === 'WAITING_FOR_ADDRESS') {
+    const address = text.trim();
+
+    try {
+      // Validate address format
+      if (!web3.utils.isAddress(address)) {
+        bot.sendMessage(chatId, `
+❌ *Format Alamat Tidak Valid*
+
+Alamat yang Anda kirimkan tidak valid.
+
+*Pastikan:*
+• Dimulai dengan \`0x\`
+• Panjang 42 karakter
+• Format alamat EVM yang benar
+
+Contoh valid: \`0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\`
+
+Silakan kirim ulang alamat yang benar, atau ketik /faucet untuk memulai lagi.
+        `, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      // Check claim eligibility
+      if (!canClaimToday(userId)) {
+        clearUserState(userId);
+        bot.sendMessage(chatId, '⏳ Anda sudah claim hari ini. Silakan coba lagi besok.');
+        return;
+      }
+
+      // Send processing message
+      const processingMsg = await bot.sendMessage(chatId, `
+✅ *Alamat Valid*
+
+Alamat: \`${address}\`
+
+⏳ Sedang memproses pengiriman token...
+      `, { parse_mode: 'Markdown' });
+
+      // Get decimals
+      let decimals = 8;
+      try {
+        decimals = await contract.methods.decimals().call();
+      } catch (e) {}
+
+      // Amount to send (0.001 sovaBTC)
+      const amountToSend = BigInt(100000); // 0.001 with 8 decimals
+
+      // Execute transfer
+      const transferMethod = contract.methods.transfer(address, amountToSend.toString());
+      const gasEstimate = await transferMethod.estimateGas({ from: account.address });
+      const tx = await transferMethod.send({
+        from: account.address,
+        gas: Math.floor(Number(gasEstimate) * 1.2).toString()
+      });
+
+      // Record the claim
+      recordClaim(userId, address, tx.transactionHash);
+      clearUserState(userId);
+
+      // Get claim data for success message
+      const claimsData = loadClaims();
+      const userClaimData = claimsData.claims[userId];
+
+      // Success message
+      const successMsg = `
+🎉 *Klaim Berhasil!*
+
+Anda telah menerima *${formatTokenAmount(amountToSend.toString(), decimals)} sovaBTC*
+
+*Detail Transaksi:*
+📍 Alamat: \`${address}\`
+💰 Jumlah: ${formatTokenAmount(amountToSend.toString(), decimals)} sovaBTC
+📄 TX Hash: \`${tx.transactionHash}\`
+⛽ Gas Used: ${tx.gasUsed.toString()}
+
+🔗 [Lihat di Explorer](https://explorer.testnet.sova.io/tx/${tx.transactionHash})
+
+*Informasi:*
+✅ Token sudah dikirim ke wallet Anda
+⏰ Claim berikutnya: Besok jam 00:00 WIB
+👤 User: ${username}
+📊 Total Klaim: ${userClaimData.totalClaims}x
+
+Terima kasih telah menggunakan Sova BTC Faucet! 🚀
+      `;
+
+      bot.editMessageText(successMsg, {
+        chat_id: chatId,
+        message_id: processingMsg.message_id,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+
+      console.log(`[FAUCET] User ${userId} (${username}) claimed ${formatTokenAmount(amountToSend.toString(), decimals)} sovaBTC to ${address}: ${tx.transactionHash}`);
+
+    } catch (error) {
+      clearUserState(userId);
+
+      let errorMsg = `
+⚠️ *Terjadi Kegagalan*
+
+Maaf, terjadi kegagalan saat mengirim transaksi.
+
+*Error:* \`${error.message}\`
+
+*Kemungkinan penyebab:*
+• Gas fee tidak cukup di wallet faucet
+• Jaringan sedang sibuk
+• Kontrak error
+
+Silakan coba lagi beberapa saat atau hubungi admin.
+      `;
+
+      bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
+      console.error('[FAUCET] Error processing claim:', error);
+    }
+  }
 });
 
 // Error handling
