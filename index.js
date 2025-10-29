@@ -1,6 +1,7 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { Web3 } = require('web3');
+const fs = require('fs');
 
 // Konfigurasi
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -71,6 +72,23 @@ const MINT_ABI = [
     outputs: [{ name: '', type: 'uint8' }],
     stateMutability: 'view',
     type: 'function'
+  },
+  {
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    name: 'transfer',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
   }
 ];
 
@@ -128,6 +146,52 @@ function formatTokenAmount(amount, decimals) {
   return `${wholePart}.${trimmedFractional}`;
 }
 
+// Wallet Management Functions
+const WALLET_FILE = 'wallet.json';
+
+function loadWallets() {
+  try {
+    if (fs.existsSync(WALLET_FILE)) {
+      const data = fs.readFileSync(WALLET_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error loading wallets:', e.message);
+  }
+  return { wallets: [] };
+}
+
+function saveWallets(walletData) {
+  try {
+    fs.writeFileSync(WALLET_FILE, JSON.stringify(walletData, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Error saving wallets:', e.message);
+    return false;
+  }
+}
+
+function createNewWallets(count) {
+  const walletData = loadWallets();
+  const newWallets = [];
+  
+  for (let i = 0; i < count; i++) {
+    const newAccount = web3.eth.accounts.create();
+    newWallets.push({
+      address: newAccount.address,
+      privateKey: newAccount.privateKey,
+      createdAt: new Date().toISOString(),
+      hasMinted: false,
+      lastMintTx: null
+    });
+  }
+  
+  walletData.wallets.push(...newWallets);
+  saveWallets(walletData);
+  
+  return newWallets;
+}
+
 // Command: /start
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -140,16 +204,21 @@ Halo ${username}! 👋
 
 Bot ini untuk minting sovaBTC di Sova Testnet.
 
-*📝 Commands:*
-/mint - Mint sovaBTC (auto amount)
-
+*📝 Single Wallet:*
+/mint - Mint sovaBTC dari wallet utama
 /balance - Cek ETH balance
 /info - Info wallet & network
-/help - Tampilkan bantuan
+
+*🔥 Multi Wallet (Mass Minting):*
+/createwallets <n> - Buat banyak wallet
+/fundwallets - Kirim gas fee ke semua wallet
+/mintall - Mint dari semua wallet
+/collectall - Kumpulkan sovaBTC ke wallet utama
+/walletstatus - Status semua wallet
+
+/help - Bantuan lengkap
 
 🔐 Your User ID: \`${msg.from.id}\`
-
-⚠️ Note: Amount ditentukan oleh contract
   `;
 
   bot.sendMessage(chatId, welcomeMsg, { parse_mode: 'Markdown' });
@@ -162,22 +231,32 @@ bot.onText(/\/help/, (msg) => {
   const helpMsg = `
 📖 *Panduan Penggunaan*
 
-*🪙 Mint sovaBTC:*
-/mint
-
-⚠️ Amount sudah ditentukan oleh contract
-Tinggal ketik \`/mint\` dan tunggu proses selesai
-
-*💰 Cek Balance:*
+*🪙 Single Mint:*
+/mint → Mint sovaBTC dari wallet utama
 /balance → Lihat ETH balance
+/info → Info wallet & network
 
-*ℹ️ Info Network:*
-/info → Lihat info wallet & network
+*🔥 Mass Minting (Multi Wallet):*
+1️⃣ /createwallets <jumlah>
+   Contoh: \`/createwallets 10\`
+   Buat banyak wallet baru (max 100)
+
+2️⃣ /fundwallets
+   Transfer 0.001 ETH gas fee ke semua wallet
+
+3️⃣ /mintall
+   Mint sovaBTC dari semua wallet otomatis
+
+4️⃣ /collectall
+   Kumpulkan semua sovaBTC ke wallet utama
+
+📊 /walletstatus
+   Cek status & balance semua wallet
 
 *❓ Tips:*
-• Pastikan ada ETH untuk gas fee
-• Transaksi butuh waktu beberapa detik
-• Cek hasil di Sova Explorer
+• wallet.json menyimpan private keys (JANGAN SHARE!)
+• Pastikan wallet utama punya cukup ETH untuk gas
+• Setiap address hanya bisa mint 1x
   `;
 
   bot.sendMessage(chatId, helpMsg, { parse_mode: 'Markdown' });
@@ -433,6 +512,376 @@ Error: \`${error.message}\`
   }
 });
 
+// Command: /createwallets <count>
+bot.onText(/\/createwallets(?:\s+(\d+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  const count = match[1] ? parseInt(match[1]) : null;
+  
+  if (!count || count < 1 || count > 100) {
+    bot.sendMessage(chatId, '❌ Gunakan: /createwallets <jumlah>\n\nContoh: /createwallets 10\nMax: 100 wallets');
+    return;
+  }
+
+  try {
+    bot.sendMessage(chatId, `⏳ Creating ${count} wallets...`);
+    
+    const newWallets = createNewWallets(count);
+    const walletData = loadWallets();
+    
+    const msg = `✅ *${count} Wallets Created!*
+
+Total wallets: ${walletData.wallets.length}
+
+*New addresses:*
+${newWallets.slice(0, 5).map((w, i) => `${i + 1}. \`${w.address}\``).join('\n')}
+${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
+
+⚠️ Data disimpan di wallet.json
+🔐 Jangan share private keys!
+    `;
+    
+    bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+  }
+});
+
+// Command: /fundwallets
+bot.onText(/\/fundwallets/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+    
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `⏳ Funding ${walletData.wallets.length} wallets...\n\nStep 1/${walletData.wallets.length + 1}: Checking main wallet balance...`);
+    
+    const mainBalance = await web3.eth.getBalance(account.address);
+    const fundAmount = web3.utils.toWei('0.001', 'ether');
+    const totalNeeded = BigInt(fundAmount) * BigInt(walletData.wallets.length);
+    
+    if (BigInt(mainBalance) < totalNeeded) {
+      bot.editMessageText(`❌ Balance tidak cukup!\n\nDibutuhkan: ${web3.utils.fromWei(totalNeeded.toString(), 'ether')} ETH\nTersedia: ${web3.utils.fromWei(mainBalance, 'ether')} ETH`, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < walletData.wallets.length; i++) {
+      const wallet = walletData.wallets[i];
+      
+      await bot.editMessageText(`⏳ Funding wallets...\n\nStep ${i + 2}/${walletData.wallets.length + 1}: Sending to ${wallet.address.slice(0, 10)}...`, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+
+      try {
+        const tx = await web3.eth.sendTransaction({
+          from: account.address,
+          to: wallet.address,
+          value: fundAmount,
+          gas: 21000
+        });
+        
+        console.log(`Funded ${wallet.address}: ${tx.transactionHash}`);
+        successCount++;
+      } catch (e) {
+        console.error(`Failed to fund ${wallet.address}:`, e.message);
+        failCount++;
+      }
+    }
+
+    const resultMsg = `✅ *Funding Complete!*
+
+✅ Success: ${successCount}
+❌ Failed: ${failCount}
+💰 Amount per wallet: 0.001 ETH
+
+Gunakan /walletstatus untuk cek detail
+    `;
+
+    bot.editMessageText(resultMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Fund error:', error);
+  }
+});
+
+// Command: /mintall
+bot.onText(/\/mintall/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+    
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `⏳ Minting from ${walletData.wallets.length} wallets...\n\nPreparing...`);
+    
+    let successCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < walletData.wallets.length; i++) {
+      const wallet = walletData.wallets[i];
+      
+      await bot.editMessageText(`⏳ Minting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+
+      try {
+        // Check if already minted
+        const hasMinted = await contract.methods.hasMinted(wallet.address).call();
+        if (hasMinted) {
+          console.log(`Skipped ${wallet.address}: already minted`);
+          skippedCount++;
+          continue;
+        }
+
+        // Add wallet to web3 temporarily
+        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
+        web3.eth.accounts.wallet.add(tempAccount);
+
+        // Mint
+        const mintMethod = contract.methods.mint();
+        const gasEstimate = await mintMethod.estimateGas({ from: wallet.address });
+        const tx = await mintMethod.send({
+          from: wallet.address,
+          gas: Math.floor(Number(gasEstimate) * 1.2).toString()
+        });
+
+        console.log(`Minted from ${wallet.address}: ${tx.transactionHash}`);
+        wallet.hasMinted = true;
+        wallet.lastMintTx = tx.transactionHash;
+        successCount++;
+
+        // Remove from web3 wallet
+        web3.eth.accounts.wallet.remove(wallet.address);
+
+      } catch (e) {
+        console.error(`Failed to mint from ${wallet.address}:`, e.message);
+        failCount++;
+      }
+    }
+
+    saveWallets(walletData);
+
+    const resultMsg = `✅ *Minting Complete!*
+
+✅ Success: ${successCount}
+⏭️ Skipped (already minted): ${skippedCount}
+❌ Failed: ${failCount}
+
+Total wallets: ${walletData.wallets.length}
+
+Gunakan /collectall untuk kumpulkan sovaBTC
+    `;
+
+    bot.editMessageText(resultMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Mint all error:', error);
+  }
+});
+
+// Command: /collectall
+bot.onText(/\/collectall/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+    
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `⏳ Collecting sovaBTC from ${walletData.wallets.length} wallets...\n\nPreparing...`);
+    
+    let decimals = 8;
+    try {
+      decimals = await contract.methods.decimals().call();
+    } catch (e) {}
+
+    let totalCollected = BigInt(0);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < walletData.wallets.length; i++) {
+      const wallet = walletData.wallets[i];
+      
+      await bot.editMessageText(`⏳ Collecting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+
+      try {
+        // Check balance
+        const balance = await contract.methods.balanceOf(wallet.address).call();
+        
+        if (BigInt(balance) === 0n) {
+          console.log(`Skipped ${wallet.address}: no balance`);
+          continue;
+        }
+
+        // Add wallet to web3 temporarily
+        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
+        web3.eth.accounts.wallet.add(tempAccount);
+
+        // Transfer to main wallet
+        const transferMethod = contract.methods.transfer(account.address, balance.toString());
+        const gasEstimate = await transferMethod.estimateGas({ from: wallet.address });
+        const tx = await transferMethod.send({
+          from: wallet.address,
+          gas: Math.floor(Number(gasEstimate) * 1.2).toString()
+        });
+
+        console.log(`Collected ${formatTokenAmount(balance.toString(), decimals)} from ${wallet.address}: ${tx.transactionHash}`);
+        totalCollected += BigInt(balance);
+        successCount++;
+
+        // Remove from web3 wallet
+        web3.eth.accounts.wallet.remove(wallet.address);
+
+      } catch (e) {
+        console.error(`Failed to collect from ${wallet.address}:`, e.message);
+        failCount++;
+      }
+    }
+
+    const resultMsg = `✅ *Collection Complete!*
+
+✅ Success: ${successCount}
+❌ Failed: ${failCount}
+💰 Total collected: ${formatTokenAmount(totalCollected.toString(), decimals)} sovaBTC
+
+Main wallet: \`${account.address}\`
+
+🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
+    `;
+
+    bot.editMessageText(resultMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Collect all error:', error);
+  }
+});
+
+// Command: /walletstatus
+bot.onText(/\/walletstatus/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+    
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    bot.sendMessage(chatId, `⏳ Checking ${walletData.wallets.length} wallets...`);
+
+    let decimals = 8;
+    try {
+      decimals = await contract.methods.decimals().call();
+    } catch (e) {}
+
+    let totalETH = BigInt(0);
+    let totalSovaBTC = BigInt(0);
+    let mintedCount = 0;
+
+    for (const wallet of walletData.wallets) {
+      try {
+        const ethBalance = await web3.eth.getBalance(wallet.address);
+        const sovaBTCBalance = await contract.methods.balanceOf(wallet.address).call();
+        const hasMinted = await contract.methods.hasMinted(wallet.address).call();
+
+        totalETH += BigInt(ethBalance);
+        totalSovaBTC += BigInt(sovaBTCBalance);
+        if (hasMinted) mintedCount++;
+      } catch (e) {
+        console.error(`Error checking ${wallet.address}:`, e.message);
+      }
+    }
+
+    const statusMsg = `📊 *Wallet Status*
+
+Total wallets: ${walletData.wallets.length}
+Minted: ${mintedCount}
+Not minted: ${walletData.wallets.length - mintedCount}
+
+💰 *Total Balances:*
+ETH: ${web3.utils.fromWei(totalETH.toString(), 'ether')} ETH
+sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
+
+*Commands:*
+/fundwallets - Fund all wallets
+/mintall - Mint from all wallets
+/collectall - Collect to main wallet
+    `;
+
+    bot.sendMessage(chatId, statusMsg, { parse_mode: 'Markdown' });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Status error:', error);
+  }
+});
+
 // Handle unknown commands
 bot.on('message', (msg) => {
   const text = msg.text;
@@ -440,7 +889,9 @@ bot.on('message', (msg) => {
   if (!text || !text.startsWith('/')) return;
   if (text.startsWith('/start') || text.startsWith('/help') || 
       text.startsWith('/mint') || text.startsWith('/balance') || 
-      text.startsWith('/info')) return;
+      text.startsWith('/info') || text.startsWith('/createwallets') ||
+      text.startsWith('/fundwallets') || text.startsWith('/mintall') ||
+      text.startsWith('/collectall') || text.startsWith('/walletstatus')) return;
 
   bot.sendMessage(msg.chat.id, '❌ Unknown command. Ketik /help untuk bantuan.');
 });
