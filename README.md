@@ -5,7 +5,7 @@
 Telegram bot untuk minting, distribusi, dan faucet sovaBTC token di Sova Testnet. Bot ini menggunakan Web3.js untuk berinteraksi dengan smart contract sovaBTC dan Telegram Bot API untuk interface pengguna.
 
 **Status:** ✅ Active - Bot configured and ready to run
-**Last Updated:** December 2024
+**Last Updated:** 29/19/25
 **Version:** 2.1 (With Faucet System & User-Friendly Transfer)
 
 ## Recent Changes (Latest Version)
