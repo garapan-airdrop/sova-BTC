@@ -64,6 +64,13 @@ const MINT_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function'
   }
 ];
 
@@ -99,6 +106,26 @@ const bot = new TelegramBot(BOT_TOKEN, {
 function isAuthorized(userId) {
   if (ALLOWED_USERS.length === 0) return true;
   return ALLOWED_USERS.includes(userId.toString());
+}
+
+// Format number dengan decimals
+function formatTokenAmount(amount, decimals) {
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const wholePart = BigInt(amount) / divisor;
+  const fractionalPart = BigInt(amount) % divisor;
+  
+  if (fractionalPart === 0n) {
+    return wholePart.toString();
+  }
+  
+  const fractionalStr = fractionalPart.toString().padStart(Number(decimals), '0');
+  const trimmedFractional = fractionalStr.replace(/0+$/, '');
+  
+  if (trimmedFractional === '') {
+    return wholePart.toString();
+  }
+  
+  return `${wholePart}.${trimmedFractional}`;
 }
 
 // Command: /start
@@ -285,19 +312,35 @@ Gunakan wallet lain untuk mint lagi.
 
     // Cek MAX_SUPPLY vs totalSupply
     try {
-      const maxSupply = await contract.methods.MAX_SUPPLY().call();
+      const maxSupplyBase = await contract.methods.MAX_SUPPLY().call();
       const totalSupply = await contract.methods.totalSupply().call();
-      console.log('MAX_SUPPLY:', maxSupply.toString());
+      let decimals = 8; // Default BTC decimals
+      
+      try {
+        decimals = await contract.methods.decimals().call();
+      } catch (e) {
+        console.log('Cannot get decimals, using default 8:', e.message);
+      }
+      
+      // MAX_SUPPLY dari contract adalah base value, harus dikali 10^decimals
+      const maxSupplyWithDecimals = BigInt(maxSupplyBase) * (BigInt(10) ** BigInt(decimals));
+      
+      console.log('MAX_SUPPLY (base):', maxSupplyBase.toString());
+      console.log('MAX_SUPPLY (with decimals):', maxSupplyWithDecimals.toString());
       console.log('Total Supply:', totalSupply.toString());
+      console.log('Decimals:', decimals);
 
-      if (BigInt(totalSupply) >= BigInt(maxSupply)) {
+      if (BigInt(totalSupply) >= maxSupplyWithDecimals) {
+        const maxSupplyFormatted = formatTokenAmount(maxSupplyWithDecimals.toString(), decimals);
+        const totalSupplyFormatted = formatTokenAmount(totalSupply.toString(), decimals);
+        
         await bot.editMessageText(`
 ❌ *Cannot Mint!*
 
 ⚠️ MAX SUPPLY sudah tercapai!
 
-Max Supply: ${web3.utils.fromWei(maxSupply.toString(), 'ether')}
-Current Supply: ${web3.utils.fromWei(totalSupply.toString(), 'ether')}
+Max Supply: ${maxSupplyFormatted} sovaBTC
+Current Supply: ${totalSupplyFormatted} sovaBTC
 
 Tidak ada supply tersisa untuk dimint.
         `, {
