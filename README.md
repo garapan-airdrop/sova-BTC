@@ -13,6 +13,7 @@ Telegram bot untuk minting sovaBTC token di Sova Testnet. Bot ini menggunakan We
 ├── package.json       # Node.js dependencies
 ├── .env              # Environment variables (not committed)
 ├── .gitignore        # Git ignore rules
+├── wallet.json        # Multi-wallet data (auto-created, not committed)
 └── README.md         # Original project documentation
 ```
 
@@ -34,11 +35,20 @@ Telegram bot untuk minting sovaBTC token di Sova Testnet. Bot ini menggunakan We
 - `ALLOWED_USERS` - Comma-separated user IDs who can use the bot (empty = all users)
 
 ## Bot Commands
+
+### Single Wallet Commands
 - `/start` - Welcome message and bot introduction
-- `/mint` - Mint sovaBTC tokens (auto amount from contract)
+- `/mint` - Mint sovaBTC tokens from main wallet (auto amount from contract)
 - `/balance` - Check ETH balance on Sova Testnet
 - `/info` - Display wallet and network information
 - `/help` - Show help and usage guide
+
+### Multi-Wallet Mass Minting Commands
+- `/createwallets <count>` - Create multiple wallets (max 100) and save to wallet.json
+- `/fundwallets` - Transfer 0.001 ETH gas fee from main wallet to all created wallets
+- `/mintall` - Automatically mint sovaBTC from all wallets that haven't minted yet
+- `/collectall` - Collect all sovaBTC from wallets back to main wallet
+- `/walletstatus` - Check status and balances of all created wallets
 
 ## Features
 - ✅ Automatic mint eligibility checking (hasMinted status)
@@ -47,6 +57,10 @@ Telegram bot untuk minting sovaBTC token di Sova Testnet. Bot ini menggunakan We
 - ✅ Real-time transaction status updates
 - ✅ User authorization (optional whitelist)
 - ✅ Multi-language support (Indonesian)
+- ✅ Multi-wallet mass minting automation
+- ✅ Automatic wallet creation and management
+- ✅ Batch funding and minting operations
+- ✅ Token collection to main wallet
 
 ## Workflow
 - **Telegram Bot** - Runs `npm start` to start the bot with console output
