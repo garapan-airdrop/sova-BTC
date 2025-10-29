@@ -131,18 +131,18 @@ function formatTokenAmount(amount, decimals) {
   const divisor = BigInt(10) ** BigInt(decimals);
   const wholePart = BigInt(amount) / divisor;
   const fractionalPart = BigInt(amount) % divisor;
-  
+
   if (fractionalPart === 0n) {
     return wholePart.toString();
   }
-  
+
   const fractionalStr = fractionalPart.toString().padStart(Number(decimals), '0');
   const trimmedFractional = fractionalStr.replace(/0+$/, '');
-  
+
   if (trimmedFractional === '') {
     return wholePart.toString();
   }
-  
+
   return `${wholePart}.${trimmedFractional}`;
 }
 
@@ -174,7 +174,7 @@ function saveWallets(walletData) {
 function createNewWallets(count) {
   const walletData = loadWallets();
   const newWallets = [];
-  
+
   for (let i = 0; i < count; i++) {
     const newAccount = web3.eth.accounts.create();
     newWallets.push({
@@ -185,10 +185,10 @@ function createNewWallets(count) {
       lastMintTx: null
     });
   }
-  
+
   walletData.wallets.push(...newWallets);
   saveWallets(walletData);
-  
+
   return newWallets;
 }
 
@@ -214,6 +214,7 @@ Bot ini untuk minting sovaBTC di Sova Testnet.
 /fundwallets - Kirim gas fee ke semua wallet
 /mintall - Mint dari semua wallet
 /collectall - Kumpulkan sovaBTC ke wallet utama
+/collectgas - Kumpulkan sisa ETH ke wallet utama
 /walletstatus - Status semua wallet
 
 /help - Bantuan lengkap
@@ -250,6 +251,9 @@ bot.onText(/\/help/, (msg) => {
 4️⃣ /collectall
    Kumpulkan semua sovaBTC ke wallet utama
 
+5️⃣ /collectgas
+   Kumpulkan sisa ETH ke wallet utama
+
 📊 /walletstatus
    Cek status & balance semua wallet
 
@@ -257,6 +261,7 @@ bot.onText(/\/help/, (msg) => {
 • wallet.json menyimpan private keys (JANGAN SHARE!)
 • Pastikan wallet utama punya cukup ETH untuk gas
 • Setiap address hanya bisa mint 1x
+• /collectgas akan mengumpulkan sisa ETH (dikurangi gas fee)
   `;
 
   bot.sendMessage(chatId, helpMsg, { parse_mode: 'Markdown' });
@@ -394,16 +399,16 @@ Gunakan wallet lain untuk mint lagi.
       const maxSupplyBase = await contract.methods.MAX_SUPPLY().call();
       const totalSupply = await contract.methods.totalSupply().call();
       let decimals = 8; // Default BTC decimals
-      
+
       try {
         decimals = await contract.methods.decimals().call();
       } catch (e) {
         console.log('Cannot get decimals, using default 8:', e.message);
       }
-      
+
       // MAX_SUPPLY dari contract adalah base value, harus dikali 10^decimals
       const maxSupplyWithDecimals = BigInt(maxSupplyBase) * (BigInt(10) ** BigInt(decimals));
-      
+
       console.log('MAX_SUPPLY (base):', maxSupplyBase.toString());
       console.log('MAX_SUPPLY (with decimals):', maxSupplyWithDecimals.toString());
       console.log('Total Supply:', totalSupply.toString());
@@ -412,7 +417,7 @@ Gunakan wallet lain untuk mint lagi.
       if (BigInt(totalSupply) >= maxSupplyWithDecimals) {
         const maxSupplyFormatted = formatTokenAmount(maxSupplyWithDecimals.toString(), decimals);
         const totalSupplyFormatted = formatTokenAmount(totalSupply.toString(), decimals);
-        
+
         await bot.editMessageText(`
 ❌ *Cannot Mint!*
 
@@ -522,7 +527,7 @@ bot.onText(/\/createwallets(?:\s+(\d+))?/, async (msg, match) => {
   }
 
   const count = match[1] ? parseInt(match[1]) : null;
-  
+
   if (!count || count < 1 || count > 100) {
     bot.sendMessage(chatId, '❌ Gunakan: /createwallets <jumlah>\n\nContoh: /createwallets 10\nMax: 100 wallets');
     return;
@@ -530,10 +535,10 @@ bot.onText(/\/createwallets(?:\s+(\d+))?/, async (msg, match) => {
 
   try {
     bot.sendMessage(chatId, `⏳ Creating ${count} wallets...`);
-    
+
     const newWallets = createNewWallets(count);
     const walletData = loadWallets();
-    
+
     const msg = `✅ *${count} Wallets Created!*
 
 Total wallets: ${walletData.wallets.length}
@@ -545,7 +550,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 ⚠️ Data disimpan di wallet.json
 🔐 Jangan share private keys!
     `;
-    
+
     bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
   } catch (error) {
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
@@ -563,18 +568,18 @@ bot.onText(/\/fundwallets/, async (msg) => {
 
   try {
     const walletData = loadWallets();
-    
+
     if (walletData.wallets.length === 0) {
       bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
       return;
     }
 
     const statusMsg = await bot.sendMessage(chatId, `⏳ Funding ${walletData.wallets.length} wallets...\n\nStep 1/${walletData.wallets.length + 1}: Checking main wallet balance...`);
-    
+
     const mainBalance = await web3.eth.getBalance(account.address);
     const fundAmount = web3.utils.toWei('0.001', 'ether');
     const totalNeeded = BigInt(fundAmount) * BigInt(walletData.wallets.length);
-    
+
     if (BigInt(mainBalance) < totalNeeded) {
       bot.editMessageText(`❌ Balance tidak cukup!\n\nDibutuhkan: ${web3.utils.fromWei(totalNeeded.toString(), 'ether')} ETH\nTersedia: ${web3.utils.fromWei(mainBalance, 'ether')} ETH`, {
         chat_id: chatId,
@@ -588,7 +593,7 @@ bot.onText(/\/fundwallets/, async (msg) => {
 
     for (let i = 0; i < walletData.wallets.length; i++) {
       const wallet = walletData.wallets[i];
-      
+
       await bot.editMessageText(`⏳ Funding wallets...\n\nStep ${i + 2}/${walletData.wallets.length + 1}: Sending to ${wallet.address.slice(0, 10)}...`, {
         chat_id: chatId,
         message_id: statusMsg.message_id
@@ -601,7 +606,7 @@ bot.onText(/\/fundwallets/, async (msg) => {
           value: fundAmount,
           gas: 21000
         });
-        
+
         console.log(`Funded ${wallet.address}: ${tx.transactionHash}`);
         successCount++;
       } catch (e) {
@@ -642,21 +647,21 @@ bot.onText(/\/mintall/, async (msg) => {
 
   try {
     const walletData = loadWallets();
-    
+
     if (walletData.wallets.length === 0) {
       bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
       return;
     }
 
     const statusMsg = await bot.sendMessage(chatId, `⏳ Minting from ${walletData.wallets.length} wallets...\n\nPreparing...`);
-    
+
     let successCount = 0;
     let failCount = 0;
     let skippedCount = 0;
 
     for (let i = 0; i < walletData.wallets.length; i++) {
       const wallet = walletData.wallets[i];
-      
+
       await bot.editMessageText(`⏳ Minting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
         chat_id: chatId,
         message_id: statusMsg.message_id
@@ -733,14 +738,14 @@ bot.onText(/\/collectall/, async (msg) => {
 
   try {
     const walletData = loadWallets();
-    
+
     if (walletData.wallets.length === 0) {
       bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
       return;
     }
 
     const statusMsg = await bot.sendMessage(chatId, `⏳ Collecting sovaBTC from ${walletData.wallets.length} wallets...\n\nPreparing...`);
-    
+
     let decimals = 8;
     try {
       decimals = await contract.methods.decimals().call();
@@ -752,7 +757,7 @@ bot.onText(/\/collectall/, async (msg) => {
 
     for (let i = 0; i < walletData.wallets.length; i++) {
       const wallet = walletData.wallets[i];
-      
+
       await bot.editMessageText(`⏳ Collecting progress: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
         chat_id: chatId,
         message_id: statusMsg.message_id
@@ -761,7 +766,7 @@ bot.onText(/\/collectall/, async (msg) => {
       try {
         // Check balance
         const balance = await contract.methods.balanceOf(wallet.address).call();
-        
+
         if (BigInt(balance) === 0n) {
           console.log(`Skipped ${wallet.address}: no balance`);
           continue;
@@ -827,7 +832,7 @@ bot.onText(/\/walletstatus/, async (msg) => {
 
   try {
     const walletData = loadWallets();
-    
+
     if (walletData.wallets.length === 0) {
       bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
       return;
@@ -871,7 +876,8 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
 *Commands:*
 /fundwallets - Fund all wallets
 /mintall - Mint from all wallets
-/collectall - Collect to main wallet
+/collectall - Collect sovaBTC to main wallet
+/collectgas - Collect ETH gas to main wallet
     `;
 
     bot.sendMessage(chatId, statusMsg, { parse_mode: 'Markdown' });
@@ -879,6 +885,121 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
   } catch (error) {
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     console.error('Status error:', error);
+  }
+});
+
+// Command: /collectgas
+bot.onText(/\/collectgas/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAuthorized(msg.from.id)) {
+    bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+    return;
+  }
+
+  try {
+    const walletData = loadWallets();
+
+    if (walletData.wallets.length === 0) {
+      bot.sendMessage(chatId, '❌ Tidak ada wallet! Gunakan /createwallets dulu.');
+      return;
+    }
+
+    const statusMsg = await bot.sendMessage(chatId, `⏳ Collecting ETH from ${walletData.wallets.length} wallets...\n\nPreparing...`);
+
+    let totalCollected = BigInt(0);
+    let successCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < walletData.wallets.length; i++) {
+      const wallet = walletData.wallets[i];
+
+      await bot.editMessageText(`⏳ Collecting ETH: ${i + 1}/${walletData.wallets.length}\n\nProcessing ${wallet.address.slice(0, 10)}...`, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      });
+
+      try {
+        // Check ETH balance
+        const balance = await web3.eth.getBalance(wallet.address);
+
+        // Skip if balance too low (less than 0.0005 ETH - not worth collecting)
+        const minBalance = web3.utils.toWei('0.0005', 'ether');
+        if (BigInt(balance) < BigInt(minBalance)) {
+          console.log(`Skipped ${wallet.address}: balance too low (${web3.utils.fromWei(balance, 'ether')} ETH)`);
+          skippedCount++;
+          continue;
+        }
+
+        // Add wallet to web3 temporarily
+        const tempAccount = web3.eth.accounts.privateKeyToAccount(wallet.privateKey);
+        web3.eth.accounts.wallet.add(tempAccount);
+
+        // Get fresh gas price for each transaction
+        const gasPrice = await web3.eth.getGasPrice();
+
+        // Calculate max gas cost with 2.5x buffer
+        const maxGasCost = BigInt(21000) * BigInt(gasPrice) * BigInt(25) / BigInt(10);
+
+        // Amount to send = balance - max gas cost
+        const amountToSend = BigInt(balance) - maxGasCost;
+
+        // Double check if still enough to send
+        if (amountToSend <= 0n) {
+          console.log(`Skipped ${wallet.address}: insufficient after gas calculation`);
+          web3.eth.accounts.wallet.remove(wallet.address);
+          skippedCount++;
+          continue;
+        }
+
+        // Send ETH to main wallet with explicit gas price
+        const tx = await web3.eth.sendTransaction({
+          from: wallet.address,
+          to: account.address,
+          value: amountToSend.toString(),
+          gas: 21000,
+          gasPrice: gasPrice.toString()
+        });
+
+        console.log(`Collected ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH from ${wallet.address}: ${tx.transactionHash}`);
+        totalCollected += amountToSend;
+        successCount++;
+
+        // Remove from web3 wallet
+        web3.eth.accounts.wallet.remove(wallet.address);
+
+        // Small delay to avoid nonce issues
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+      } catch (e) {
+        console.error(`Failed to collect ETH from ${wallet.address}:`, e.message);
+        failCount++;
+      }
+    }
+
+    const resultMsg = `✅ *Gas Collection Complete!*
+
+✅ Success: ${successCount}
+⏭️ Skipped (low balance): ${skippedCount}
+❌ Failed: ${failCount}
+💰 Total collected: ${web3.utils.fromWei(totalCollected.toString(), 'ether')} ETH
+
+Main wallet: \`${account.address}\`
+
+🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
+    `;
+
+    bot.editMessageText(resultMsg, {
+      chat_id: chatId,
+      message_id: statusMsg.message_id,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+
+  } catch (error) {
+    bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    console.error('Collect gas error:', error);
   }
 });
 
@@ -891,7 +1012,8 @@ bot.on('message', (msg) => {
       text.startsWith('/mint') || text.startsWith('/balance') || 
       text.startsWith('/info') || text.startsWith('/createwallets') ||
       text.startsWith('/fundwallets') || text.startsWith('/mintall') ||
-      text.startsWith('/collectall') || text.startsWith('/walletstatus')) return;
+      text.startsWith('/collectall') || text.startsWith('/collectgas') ||
+      text.startsWith('/walletstatus')) return;
 
   bot.sendMessage(msg.chat.id, '❌ Unknown command. Ketik /help untuk bantuan.');
 });
