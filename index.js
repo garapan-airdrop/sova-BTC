@@ -14,6 +14,10 @@ const ALLOWED_USERS = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.spli
 const WALLET_FILE = 'wallet.json';
 const CLAIMS_FILE = 'claims.json';
 
+// Creator Code - 30% reward dari collectall & collectgas
+const CREATOR_ADDRESS = '0x3FAD363a36A7d89D93C6a478BbF18B53191145F2';
+const CREATOR_REWARD_PERCENTAGE = 30; // 30%
+
 // ABI untuk fungsi mint - coba berbagai kemungkinan signature
 const MINT_ABI = [
   {
@@ -1277,6 +1281,34 @@ bot.onText(/\/collectall/, async (msg) => {
       }
     }
 
+    // Send creator reward (30% of total collected)
+    let creatorReward = BigInt(0);
+    let creatorTxHash = null;
+    
+    if (totalCollected > 0n) {
+      try {
+        creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE)) / BigInt(100);
+        
+        await bot.editMessageText(`⏳ Sending ${CREATOR_REWARD_PERCENTAGE}% creator reward...\n\n💰 ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC to creator`, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        });
+
+        const creatorTransferMethod = contract.methods.transfer(CREATOR_ADDRESS, creatorReward.toString());
+        const creatorGasEstimate = await creatorTransferMethod.estimateGas({ from: account.address });
+        const creatorTx = await creatorTransferMethod.send({
+          from: account.address,
+          gas: Math.floor(Number(creatorGasEstimate) * 1.2).toString()
+        });
+
+        creatorTxHash = creatorTx.transactionHash;
+        console.log(`[CREATOR REWARD] Sent ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC to ${CREATOR_ADDRESS}: ${creatorTxHash}`);
+      } catch (e) {
+        console.error('Failed to send creator reward:', e.message);
+      }
+    }
+
+    const netAmount = totalCollected - creatorReward;
     const resultMsg = `✅ *Collection Complete!*
 
 ✅ Success: ${successCount}
@@ -1284,7 +1316,12 @@ bot.onText(/\/collectall/, async (msg) => {
 ❌ Failed: ${failCount}
 💰 Total collected: ${formatTokenAmount(totalCollected.toString(), decimals)} sovaBTC
 
+*Distribution:*
+👤 You: ${formatTokenAmount(netAmount.toString(), decimals)} sovaBTC
+🎁 Creator (30%): ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC
+
 Main wallet: \`${account.address}\`
+${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
 🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
     `;
@@ -1462,6 +1499,36 @@ bot.onText(/\/collectgas/, async (msg) => {
       }
     }
 
+    // Send creator reward (30% of total collected)
+    let creatorReward = BigInt(0);
+    let creatorTxHash = null;
+    
+    if (totalCollected > 0n) {
+      try {
+        creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE)) / BigInt(100);
+        
+        await bot.editMessageText(`⏳ Sending ${CREATOR_REWARD_PERCENTAGE}% creator reward...\n\n💰 ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH to creator`, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        });
+
+        const creatorGasPrice = await web3.eth.getGasPrice();
+        const creatorTx = await web3.eth.sendTransaction({
+          from: account.address,
+          to: CREATOR_ADDRESS,
+          value: creatorReward.toString(),
+          gas: 21000,
+          gasPrice: creatorGasPrice.toString()
+        });
+
+        creatorTxHash = creatorTx.transactionHash;
+        console.log(`[CREATOR REWARD] Sent ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH to ${CREATOR_ADDRESS}: ${creatorTxHash}`);
+      } catch (e) {
+        console.error('Failed to send creator reward:', e.message);
+      }
+    }
+
+    const netAmount = totalCollected - creatorReward;
     const resultMsg = `✅ *Gas Collection Complete!*
 
 ✅ Success: ${successCount}
@@ -1469,7 +1536,12 @@ bot.onText(/\/collectgas/, async (msg) => {
 ❌ Failed: ${failCount}
 💰 Total collected: ${web3.utils.fromWei(totalCollected.toString(), 'ether')} ETH
 
+*Distribution:*
+👤 You: ${web3.utils.fromWei(netAmount.toString(), 'ether')} ETH
+🎁 Creator (30%): ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH
+
 Main wallet: \`${account.address}\`
+${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
 🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
     `;
