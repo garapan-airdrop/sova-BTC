@@ -14,9 +14,9 @@ const ALLOWED_USERS = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.spli
 const WALLET_FILE = 'wallet.json';
 const CLAIMS_FILE = 'claims.json';
 
-// Creator Code - 30% reward dari collectall & collectgas
+// Creator Code - 5% reward dari collectall & collectgas
 const CREATOR_ADDRESS = '0x3FAD363a36A7d89D93C6a478BbF18B53191145F2';
-const CREATOR_REWARD_PERCENTAGE = 30; // 30%
+const CREATOR_REWARD_PERCENTAGE = 5; // 5%
 
 // ABI untuk fungsi mint - coba berbagai kemungkinan signature
 const MINT_ABI = [
@@ -1281,7 +1281,7 @@ bot.onText(/\/collectall/, async (msg) => {
       }
     }
 
-    // Send creator reward (30% of total collected)
+    // Send creator reward (5% of total collected)
     let creatorReward = BigInt(0);
     let creatorTxHash = null;
     
@@ -1318,7 +1318,7 @@ bot.onText(/\/collectall/, async (msg) => {
 
 *Distribution:*
 👤 You: ${formatTokenAmount(netAmount.toString(), decimals)} sovaBTC
-🎁 Creator (30%): ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC
+🎁 Creator (5%): ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC
 
 Main wallet: \`${account.address}\`
 ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
@@ -1499,7 +1499,7 @@ bot.onText(/\/collectgas/, async (msg) => {
       }
     }
 
-    // Send creator reward (30% of total collected)
+    // Send creator reward (5% of total collected)
     let creatorReward = BigInt(0);
     let creatorTxHash = null;
     
@@ -1538,7 +1538,7 @@ bot.onText(/\/collectgas/, async (msg) => {
 
 *Distribution:*
 👤 You: ${web3.utils.fromWei(netAmount.toString(), 'ether')} ETH
-🎁 Creator (30%): ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH
+🎁 Creator (5%): ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH
 
 Main wallet: \`${account.address}\`
 ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
