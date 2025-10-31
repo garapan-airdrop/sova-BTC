@@ -4,13 +4,14 @@ const lockfile = require('proper-lockfile');
 const logger = require('../utils/logger');
 const { WALLET_FILE, LOCK_RETRIES, LOCK_MIN_TIMEOUT } = require('../config/constants');
 
-const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY || 
-  crypto.randomBytes(32).toString('hex');
-
 if (!process.env.WALLET_ENCRYPTION_KEY) {
-  logger.warn('WALLET_ENCRYPTION_KEY not set, using generated key (will regenerate on restart)');
-  logger.warn('Set WALLET_ENCRYPTION_KEY in Replit Secrets for persistence');
+  logger.error('WALLET_ENCRYPTION_KEY is required but not set in environment variables');
+  logger.error('Generate a key: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  logger.error('Then add it to Replit Secrets as WALLET_ENCRYPTION_KEY');
+  throw new Error('WALLET_ENCRYPTION_KEY must be set in Replit Secrets');
 }
+
+const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY;
 
 function encryptPrivateKey(privateKey) {
   try {
@@ -33,6 +34,7 @@ function decryptPrivateKey(encryptedData) {
   try {
     const parts = encryptedData.split(':');
     if (parts.length !== 2) {
+      logger.debug('Not encrypted format, returning as-is');
       return encryptedData;
     }
     
@@ -47,8 +49,8 @@ function decryptPrivateKey(encryptedData) {
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (error) {
-    logger.error('Decryption error', { error: error.message });
-    return encryptedData;
+    logger.error('Decryption failed - wallet data corrupted or wrong WALLET_ENCRYPTION_KEY', { error: error.message });
+    throw new Error(`Failed to decrypt wallet private key: ${error.message}. Check WALLET_ENCRYPTION_KEY is correct.`);
   }
 }
 
