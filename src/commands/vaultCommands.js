@@ -2,7 +2,7 @@
 const logger = require('../utils/logger');
 const vaultService = require('../services/vaultService');
 const { formatTokenAmount, parseTokenAmount } = require('../utils/formatters');
-const { validateAddress, validateAmount } = require('../utils/validators');
+const { validateAddress, validateTransferAmount } = require('../utils/validators');
 const { GAS_SAFETY_MARGIN, DEFAULT_DECIMALS } = require('../config/constants');
 
 function registerVaultCommands(bot, web3Service, authMiddleware) {
@@ -61,7 +61,7 @@ Assets: \`${formatTokenAmount(userBalance.assets, DEFAULT_DECIMALS)}\` spBTC
     }
 
     try {
-      const amountValidation = validateAmount(amountStr);
+      const amountValidation = validateTransferAmount(amountStr, DEFAULT_DECIMALS);
       if (!amountValidation.valid) {
         bot.sendMessage(chatId, `❌ ${amountValidation.error}`);
         return;
@@ -145,7 +145,7 @@ Required: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
     }
 
     try {
-      const amountValidation = validateAmount(sharesStr);
+      const amountValidation = validateTransferAmount(sharesStr, DEFAULT_DECIMALS);
       if (!amountValidation.valid) {
         bot.sendMessage(chatId, `❌ ${amountValidation.error}`);
         return;
