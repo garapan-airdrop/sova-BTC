@@ -1,0 +1,26 @@
+# Environment variables
+.env
+
+# Sensitive files - NEVER commit these
+wallet.json
+claims.json
+
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Backup files
+*.backup
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
