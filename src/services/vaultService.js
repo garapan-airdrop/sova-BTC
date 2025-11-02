@@ -156,9 +156,71 @@ const ERC20_ABI = [
   }
 ];
 
-// Sova Sepolia Testnet addresses
-const SPBTC_ADDRESS = '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f';
-const CONDUIT_ADDRESS = '0x4aB31F7ad938188E3F2e9c106697a52B13650906';
+// Network configuration - supports multiple networks
+const NETWORK_CONFIG = {
+  'sepolia': {
+    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
+    CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
+    name: 'Ethereum Sepolia'
+  }
+};
+
+// Get configuration from environment or network config
+function getVaultConfig() {
+  // If explicit addresses provided in env, use them
+  if (process.env.SPBTC_CONTRACT && process.env.CONDUIT_CONTRACT) {
+    logger.info('Vault configured from environment variables');
+    return {
+      SPBTC_ADDRESS: process.env.SPBTC_CONTRACT,
+      CONDUIT_ADDRESS: process.env.CONDUIT_CONTRACT,
+      name: process.env.VAULT_NETWORK || 'Custom Network',
+      configured: true
+    };
+  }
+  
+  // Check if a known network is explicitly requested
+  if (process.env.VAULT_NETWORK) {
+    const networkConfig = NETWORK_CONFIG[process.env.VAULT_NETWORK];
+    
+    if (networkConfig) {
+      logger.info('Using pre-configured network', { network: process.env.VAULT_NETWORK });
+      return {
+        ...networkConfig,
+        configured: true
+      };
+    } else {
+      logger.error(`Unknown VAULT_NETWORK: ${process.env.VAULT_NETWORK}`);
+      logger.error(`Available networks: ${Object.keys(NETWORK_CONFIG).join(', ')}`);
+    }
+  }
+  
+  // No valid configuration - vault features disabled
+  logger.info('Vault features disabled (not configured)');
+  logger.info('To enable Sova Prime vault integration, set environment variables:');
+  logger.info('  SPBTC_CONTRACT=0x... (spBTC token address)');
+  logger.info('  CONDUIT_CONTRACT=0x... (Vault contract address)');
+  logger.info('  VAULT_NETWORK=sepolia (or network name, optional)');
+  
+  return {
+    SPBTC_ADDRESS: null,
+    CONDUIT_ADDRESS: null,
+    name: 'Not Configured',
+    configured: false
+  };
+}
+
+const config = getVaultConfig();
+const SPBTC_ADDRESS = config.SPBTC_ADDRESS;
+const CONDUIT_ADDRESS = config.CONDUIT_ADDRESS;
+const VAULT_CONFIGURED = config.configured;
+
+if (VAULT_CONFIGURED) {
+  logger.info('Vault network configuration loaded', {
+    network: config.name,
+    spBTC: SPBTC_ADDRESS,
+    conduit: CONDUIT_ADDRESS
+  });
+}
 
 class VaultService {
   constructor() {
@@ -170,6 +232,11 @@ class VaultService {
 
   async initialize(web3) {
     try {
+      // Check if vault is configured
+      if (!VAULT_CONFIGURED || !SPBTC_ADDRESS || !CONDUIT_ADDRESS) {
+        throw new Error('Vault contracts not configured. Set SPBTC_CONTRACT and CONDUIT_CONTRACT environment variables to enable vault features.');
+      }
+      
       this.web3 = web3;
       
       // Conduit is the tRWA token (ERC-4626 vault)
@@ -187,12 +254,14 @@ class VaultService {
           error: error.message,
           address: CONDUIT_ADDRESS 
         });
+        throw new Error(`Vault contract verification failed: ${error.message}. Please check that CONDUIT_CONTRACT address is correct.`);
       }
       
       this.initialized = true;
-      logger.info('Vault service initialized', { 
+      logger.info('Vault service initialized successfully', { 
         conduit: CONDUIT_ADDRESS,
-        asset: SPBTC_ADDRESS 
+        asset: SPBTC_ADDRESS,
+        network: config.name
       });
     } catch (error) {
       logger.error('Failed to initialize vault service', { error: error.message });

@@ -59,6 +59,11 @@ Anda login sebagai *Administrator*.
 *🚰 Faucet Management:*
 /faucet - Claim sovaBTC (testing user flow)
 
+*🏦 Sova Prime Vault:*
+/vaultinfo - Info vault & your position
+/vaultdeposit <amount> - Deposit spBTC untuk earn yield
+/vaultwithdraw <shares> - Withdraw dari vault
+
 *❓ Bantuan:*
 /help - Panduan lengkap semua command
 
@@ -166,6 +171,17 @@ Selamat datang di Sova BTC Faucet!
    • Mint status (✅ minted / ❌ not minted)
    • Summary total balance
 
+*🔐 Backup & Recovery:*
+/listbackups → List semua wallet backups
+   • Auto-backup setiap kali save
+   • Keep 5 backup terakhir
+   • Show date & size
+
+/restorebackup <number> → Restore dari backup
+   • Restore wallet.json dari backup
+   • Requires confirmation
+   • Contoh: \`/restorebackup 1\`
+
 *📋 Daily Check-in System:*
 /checkin → Daily check-in untuk rewards
    • 1x per hari per wallet
@@ -177,10 +193,31 @@ Selamat datang di Sova BTC Faucet!
    • Skip wallet yang sudah check-in hari ini
    • Progress tracking real-time
 
+*🏦 Sova Prime Vault (Earn Yield):*
+/vaultinfo → Info vault & your position
+   • Total assets & shares di vault
+   • Share value (exchange rate)
+   • Your vault balance
+
+/vaultdeposit <amount> → Deposit spBTC ke vault
+   • Deposit untuk earn yield otomatis
+   • ERC-4626 standard vault
+   • Market-neutral BTC strategies
+   • Contoh: \`/vaultdeposit 1.5\`
+
+/vaultwithdraw <shares> → Withdraw dari vault
+   • Redeem shares untuk spBTC
+   • Withdraw kapan saja (permissionless)
+   • Contoh: \`/vaultwithdraw 1.5\`
+
 *🚰 Faucet Management:*
 /faucet → Claim sovaBTC (test user flow)
    • Untuk testing pengalaman user
    • Subject to daily limit (1x per hari)
+
+*🔗 Documentation:*
+• Sova Prime: https://docs.sova.io/sova-prime
+• Explorer: https://explorer.testnet.sova.io
 
 *❓ Tips & Best Practices:*
 • wallet.json menyimpan private keys (KEEP PRIVATE!)

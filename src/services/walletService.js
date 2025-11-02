@@ -1,9 +1,13 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const path = require('path');
 const lockfile = require('proper-lockfile');
 const logger = require('../utils/logger');
 const { encryptData, decryptData } = require('../utils/crypto');
 const { WALLET_FILE, MINTED_WALLET_FILE, LOCK_RETRIES, LOCK_MIN_TIMEOUT } = require('../config/constants');
+
+const BACKUP_DIR = 'backups';
+const MAX_BACKUPS = 5;
 
 async function loadWallets() {
   let release;
@@ -53,9 +57,125 @@ async function saveWallets(walletData) {
     
     await fs.writeFile(WALLET_FILE, JSON.stringify(encryptedData, null, 2));
     logger.info('Wallets saved successfully', { count: walletData.wallets.length });
+    
+    // Auto-backup wallet file
+    await createBackup(WALLET_FILE, encryptedData);
+    
     return true;
   } catch (error) {
     logger.error('Error saving wallets', { error: error.message });
+    return false;
+  } finally {
+    if (release) {
+      await release();
+    }
+  }
+}
+
+async function createBackup(filename, data) {
+  try {
+    // Ensure backup directory exists
+    if (!fsSync.existsSync(BACKUP_DIR)) {
+      await fs.mkdir(BACKUP_DIR, { recursive: true });
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const basename = path.basename(filename, path.extname(filename));
+    const backupFilename = `${basename}_backup_${timestamp}.json`;
+    const backupPath = path.join(BACKUP_DIR, backupFilename);
+    
+    // Save backup
+    await fs.writeFile(backupPath, JSON.stringify(data, null, 2));
+    logger.info('Backup created', { file: backupPath });
+    
+    // Clean old backups (keep only last MAX_BACKUPS)
+    await cleanOldBackups(basename);
+    
+    return backupPath;
+  } catch (error) {
+    logger.error('Backup creation failed', { error: error.message });
+    // Don't throw - backup failure shouldn't break main save
+    return null;
+  }
+}
+
+async function cleanOldBackups(basename) {
+  try {
+    const backupFiles = await fs.readdir(BACKUP_DIR);
+    const relevantBackups = backupFiles
+      .filter(f => f.startsWith(`${basename}_backup_`))
+      .map(f => ({
+        name: f,
+        path: path.join(BACKUP_DIR, f),
+        time: fsSync.statSync(path.join(BACKUP_DIR, f)).mtime.getTime()
+      }))
+      .sort((a, b) => b.time - a.time); // Sort newest first
+    
+    // Delete old backups (keep only MAX_BACKUPS)
+    if (relevantBackups.length > MAX_BACKUPS) {
+      const toDelete = relevantBackups.slice(MAX_BACKUPS);
+      for (const backup of toDelete) {
+        await fs.unlink(backup.path);
+        logger.info('Old backup deleted', { file: backup.name });
+      }
+    }
+  } catch (error) {
+    logger.error('Error cleaning old backups', { error: error.message });
+  }
+}
+
+async function listBackups(filename = WALLET_FILE) {
+  try {
+    if (!fsSync.existsSync(BACKUP_DIR)) {
+      return [];
+    }
+    
+    const basename = path.basename(filename, path.extname(filename));
+    const backupFiles = await fs.readdir(BACKUP_DIR);
+    
+    return backupFiles
+      .filter(f => f.startsWith(`${basename}_backup_`))
+      .map(f => ({
+        name: f,
+        path: path.join(BACKUP_DIR, f),
+        time: fsSync.statSync(path.join(BACKUP_DIR, f)).mtime,
+        size: fsSync.statSync(path.join(BACKUP_DIR, f)).size
+      }))
+      .sort((a, b) => b.time.getTime() - a.time.getTime());
+  } catch (error) {
+    logger.error('Error listing backups', { error: error.message });
+    return [];
+  }
+}
+
+async function restoreFromBackup(backupPath) {
+  let release;
+  try {
+    // Read backup file
+    const backupData = await fs.readFile(backupPath, 'utf8');
+    const walletData = JSON.parse(backupData);
+    
+    // Validate backup data
+    if (!walletData.wallets || !Array.isArray(walletData.wallets)) {
+      throw new Error('Invalid backup file format');
+    }
+    
+    // Lock and write to main file
+    release = await lockfile.lock(WALLET_FILE, {
+      retries: { retries: LOCK_RETRIES, minTimeout: LOCK_MIN_TIMEOUT },
+      realpath: false
+    });
+    
+    await fs.writeFile(WALLET_FILE, JSON.stringify(walletData, null, 2));
+    
+    logger.info('Wallet restored from backup', { 
+      backup: backupPath, 
+      walletCount: walletData.wallets.length 
+    });
+    
+    return true;
+  } catch (error) {
+    logger.error('Error restoring from backup', { error: error.message });
     return false;
   } finally {
     if (release) {
@@ -203,5 +323,8 @@ module.exports = {
   loadMintedWallets,
   saveMintedWallets,
   archiveMintedWallet,
-  getAllWalletsForCheckin
+  getAllWalletsForCheckin,
+  listBackups,
+  restoreFromBackup,
+  createBackup
 };

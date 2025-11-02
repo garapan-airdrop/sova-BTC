@@ -8,7 +8,9 @@ const {
   addTemporaryWallet, 
   removeTemporaryWallet,
   archiveMintedWallet,
-  loadMintedWallets
+  loadMintedWallets,
+  listBackups,
+  restoreFromBackup
 } = require('../services/walletService');
 const { 
   MAX_WALLETS_PER_BATCH, 
@@ -822,6 +824,156 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
 
     } catch (error) {
       logger.error('Wallet status error', { userId, error: error.message });
+      bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    }
+  });
+
+  bot.onText(/\/listbackups/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!authMiddleware.isAuthorized(userId)) {
+      bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+      return;
+    }
+
+    logger.info('List backups command', { userId });
+
+    try {
+      const backups = await listBackups();
+
+      if (backups.length === 0) {
+        bot.sendMessage(chatId, '📦 No backups found.\n\nBackups are created automatically every time you save wallet changes.');
+        return;
+      }
+
+      let backupMsg = `📦 *Available Wallet Backups* (${backups.length})\n\n`;
+      
+      backups.forEach((backup, index) => {
+        const date = new Date(backup.time).toLocaleString('id-ID');
+        const sizeKB = (backup.size / 1024).toFixed(2);
+        backupMsg += `${index + 1}. ${backup.name}\n`;
+        backupMsg += `   📅 ${date}\n`;
+        backupMsg += `   💾 ${sizeKB} KB\n\n`;
+      });
+
+      backupMsg += `*To restore a backup:*\n\`/restorebackup <number>\`\n\nExample: \`/restorebackup 1\`\n\n⚠️ *Warning:* Restoring will overwrite current wallet.json`;
+
+      bot.sendMessage(chatId, backupMsg, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+      logger.error('List backups error', { userId, error: error.message });
+      bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    }
+  });
+
+  bot.onText(/\/restorebackup(?:\s+(\d+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!authMiddleware.isAuthorized(userId)) {
+      bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+      return;
+    }
+
+    const backupNumber = match[1] ? parseInt(match[1]) : null;
+
+    if (!backupNumber) {
+      bot.sendMessage(chatId, `❌ Please specify backup number!\n\nUsage: \`/restorebackup <number>\`\n\nUse /listbackups to see available backups`, {
+        parse_mode: 'Markdown'
+      });
+      return;
+    }
+
+    logger.info('Restore backup command', { userId, backupNumber });
+
+    try {
+      const backups = await listBackups();
+
+      if (backups.length === 0) {
+        bot.sendMessage(chatId, '❌ No backups available!');
+        return;
+      }
+
+      if (backupNumber < 1 || backupNumber > backups.length) {
+        bot.sendMessage(chatId, `❌ Invalid backup number! Choose between 1 and ${backups.length}`);
+        return;
+      }
+
+      const selectedBackup = backups[backupNumber - 1];
+      const backupDate = new Date(selectedBackup.time).toLocaleString('id-ID');
+
+      const confirmMsg = await bot.sendMessage(chatId, `
+⚠️ *CONFIRM RESTORE*
+
+You are about to restore wallet.json from:
+📦 ${selectedBackup.name}
+📅 ${backupDate}
+
+⚠️ *WARNING:*
+• Current wallet.json will be OVERWRITTEN
+• This action CANNOT be undone
+• Make sure you want to proceed
+
+Reply with 'YES RESTORE' within 30 seconds to confirm.
+      `, { parse_mode: 'Markdown' });
+
+      // Wait for confirmation
+      const confirmListener = async (confirmMsg) => {
+        if (confirmMsg.from.id !== userId || confirmMsg.chat.id !== chatId) return;
+        
+        const response = confirmMsg.text?.trim();
+        
+        if (response === 'YES RESTORE') {
+          bot.removeListener('message', confirmListener);
+          
+          // Perform restore
+          const statusMsg = await bot.sendMessage(chatId, '⏳ Restoring wallet from backup...');
+          
+          try {
+            const success = await restoreFromBackup(selectedBackup.path);
+            
+            if (success) {
+              bot.editMessageText(`
+✅ *Restore Successful!*
+
+Wallet.json has been restored from:
+📦 ${selectedBackup.name}
+📅 ${backupDate}
+
+Use /walletstatus to verify the restored wallets.
+              `, {
+                chat_id: chatId,
+                message_id: statusMsg.message_id,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              bot.editMessageText('❌ Restore failed! Check logs for details.', {
+                chat_id: chatId,
+                message_id: statusMsg.message_id
+              });
+            }
+          } catch (error) {
+            bot.editMessageText(`❌ Restore error: ${error.message}`, {
+              chat_id: chatId,
+              message_id: statusMsg.message_id
+            });
+          }
+        } else if (response && (response.toUpperCase().includes('NO') || response.toUpperCase().includes('CANCEL'))) {
+          bot.removeListener('message', confirmListener);
+          bot.sendMessage(chatId, '❌ Restore cancelled.');
+        }
+      };
+
+      bot.on('message', confirmListener);
+
+      // Auto-cancel after 30 seconds
+      setTimeout(() => {
+        bot.removeListener('message', confirmListener);
+      }, 30000);
+
+    } catch (error) {
+      logger.error('Restore backup error', { userId, error: error.message });
       bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     }
   });

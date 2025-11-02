@@ -5,6 +5,9 @@
 wallet.json
 claims.json
 
+# Backups - encrypted but still sensitive
+backups/
+
 # Node modules
 node_modules/
 
