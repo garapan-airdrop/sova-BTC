@@ -1,0 +1,249 @@
+# Core Components
+
+This section outlines the foundational modules that power the **Sova Prime protocol**.\
+Each component is **modular**, **extensible**, and designed to integrate with **DeFi standards** and **compliance requirements**.
+
+***
+
+### 1. Registry
+
+**Purpose**\
+Central contract for managing protocol registrations and deployments.
+
+**Key Functions**
+
+```solidity
+function setStrategy(address implementation, bool allowed) external;
+function setHook(address implementation, bool allowed) external;
+function setAsset(address asset, bool allowed) external;
+function deploy(
+    address implementation,
+    string memory name,
+    string memory symbol,
+    address asset,
+    uint8 assetDecimals,
+    address manager,
+    bytes memory initData
+) external returns (address strategy, address token);
+
+function isToken(address token) external view returns (bool);
+function allTokens() external view returns (address[] memory);
+function allStrategies() external view returns (address[] memory);
+```
+
+**Access Control**
+
+* `setStrategy`: Requires `STRATEGY_ADMIN`
+* `setHook`: Requires `RULES_ADMIN`
+* `setAsset`: Requires `PROTOCOL_ADMIN`
+* `deploy`: Requires `STRATEGY_OPERATOR`
+
+**Errors**
+
+* `ZeroAddress()`
+* `UnauthorizedAsset()`
+* `UnauthorizedStrategy()`
+
+***
+
+### 2. Strategy
+
+**Purpose**\
+Manages off-chain and on-chain asset flows.
+
+**Types**
+
+* `BasicStrategy`: Core abstraction
+* `ReportedStrategy`: Oracle-based valuation
+* `GatedMintRWAStrategy`: Approval flow for deposits
+
+**Core Functions (BasicStrategy)**
+
+```solidity
+function initialize(...) external;
+function balance() external view returns (uint256);
+function setManager(address newManager) external;
+function sendETH(address payable recipient, uint256 amount) external;
+function sendToken(address token, address recipient, uint256 amount) external;
+function pullToken(address token, address from, uint256 amount) external;
+function setAllowance(address token, address spender, uint256 amount) external;
+function shareToken() external view returns (address);
+```
+
+**Additional (ReportedStrategy)**
+
+```solidity
+function setReporter(address _reporter) external;
+function balance() external view override returns (uint256);
+```
+
+**Access Control**
+
+* Strategy functions: `STRATEGY_ADMIN` or `STRATEGY_OPERATOR`
+
+**Errors**
+
+* `AlreadyInitialized()`
+* `InvalidAddress()`
+* `InvalidReporter()`
+
+***
+
+### 3. tRWA Token
+
+**Purpose**\
+ERC4626-compatible token representing user shares.
+
+**Types**
+
+* `tRWA`: Standard vault
+* `GatedMintRWA`: Escrow + two-phase minting
+
+**Key Functions**
+
+```solidity
+function deposit(...) public returns (uint256);
+function mint(...) public returns (uint256);
+function withdraw(...) public returns (uint256);
+function redeem(...) public returns (uint256);
+function addOperationHook(...) external;
+function removeOperationHook(...) external;
+function reorderOperationHooks(...) external;
+```
+
+**GatedMint Functions**
+
+```solidity
+function requestDeposit(...) external returns (bytes32);
+function mintShares(...) external returns (uint256);
+function batchMintShares(...) external returns (uint256);
+function escrow() external view returns (address);
+```
+
+**Events**
+
+* `Deposit`
+* `Withdraw`
+* `WithdrawalQueued`
+* `HookAdded`, `HookRemoved`, `HooksReordered`
+
+**Errors**
+
+* `HookCheckFailed(string)`
+* `WithdrawMoreThanMax()`
+* `NotStrategyAdmin()`
+
+***
+
+### 4. Hooks & Rules Engine
+
+**Purpose**\
+Extends the protocol with compliance logic and operational restrictions.
+
+**Types**
+
+* `BaseHook`: Abstract
+* `KycRulesHook`: KYC/AML enforcement
+* `RulesEngine`: Multi-rule aggregation
+
+**Hook Interfaces**
+
+```solidity
+function onBeforeTransfer(...) external view returns (HookOutput);
+function onBeforeDeposit(...) external view returns (HookOutput);
+function onBeforeWithdraw(...) external view returns (HookOutput);
+```
+
+**KYC Functions**
+
+```solidity
+function allow(address account) external;
+function deny(address account) external;
+function reset(address account) external;
+function isAllowed(address account) public view returns (bool);
+```
+
+**RulesEngine Functions**
+
+```solidity
+function addRule(address rule, uint8 priority) external;
+function removeRule(address rule) external;
+function setRuleEnabled(address rule, bool enabled) external;
+```
+
+**Access Control**
+
+* Roles: `KYC_OPERATOR`, `RULES_ADMIN`
+
+**Errors**
+
+* `ZeroAddress()`
+* `AddressAlreadyDenied()`
+* `InvalidArrayLength()`
+
+***
+
+### 5. Reporters
+
+**Purpose**\
+On-chain oracle system for asset price feeds.
+
+**Types**
+
+* `BaseReporter`: Abstract interface
+* `PriceOracleReporter`: Real-time oracle
+
+**Key Functions**
+
+```solidity
+function getLatestPrice() external view returns (uint256);
+function report() external view returns (bytes memory);
+function update(uint256 price) external;
+function setMaxDeviation(uint16 deviation) external;
+```
+
+**Access Control**
+
+* `update`: Requires `PRICE_UPDATER`
+* `setMaxDeviation`: Requires `PROTOCOL_ADMIN`
+
+**Errors**
+
+* `StalePrice()`
+* `ExcessiveDeviation()`
+
+***
+
+### 6. Role Manager
+
+**Purpose**\
+Role-based permissions management.
+
+**Key Functions**
+
+```solidity
+function grantRole(address user, uint256 role) public;
+function revokeRole(address user, uint256 role) public;
+function setRoleAdmin(uint256 targetRole, uint256 adminRole) external;
+function renounceRole(uint256 role) external;
+function hasRole(address user, uint256 role) public view returns (bool);
+```
+
+**Role Constants**
+
+* `PROTOCOL_ADMIN = 1`
+* `STRATEGY_ADMIN = 2`
+* `RULES_ADMIN = 4`
+* `STRATEGY_OPERATOR = 8`
+* `KYC_OPERATOR = 16`
+* `PRICE_UPDATER = 32`
+
+**Access Control**
+
+* `setRoleAdmin`: Requires `PROTOCOL_ADMIN`
+* Role management must be performed by an appropriate admin
+
+**Errors**
+
+* `Unauthorized()`
+* `InvalidRole()`
