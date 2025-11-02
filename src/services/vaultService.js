@@ -1,7 +1,7 @@
 
 const logger = require('../utils/logger');
 
-// tRWA Token ABI (ERC-4626 compatible)
+// Enhanced tRWA Token ABI (ERC-4626 compatible)
 const TRWA_ABI = [
   // ERC-4626 View functions
   {
@@ -46,6 +46,20 @@ const TRWA_ABI = [
     stateMutability: 'view',
     type: 'function'
   },
+  {
+    inputs: [{ name: 'owner', type: 'address' }],
+    name: 'maxDeposit',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'owner', type: 'address' }],
+    name: 'maxRedeem',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
   // ERC-4626 Deposit/Withdraw
   {
     inputs: [
@@ -78,6 +92,30 @@ const TRWA_ABI = [
     outputs: [{ name: 'shares', type: 'uint256' }],
     stateMutability: 'nonpayable',
     type: 'function'
+  },
+  // Events
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'sender', type: 'address' },
+      { indexed: true, name: 'receiver', type: 'address' },
+      { indexed: false, name: 'assets', type: 'uint256' },
+      { indexed: false, name: 'shares', type: 'uint256' }
+    ],
+    name: 'Deposit',
+    type: 'event'
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'sender', type: 'address' },
+      { indexed: true, name: 'receiver', type: 'address' },
+      { indexed: true, name: 'owner', type: 'address' },
+      { indexed: false, name: 'assets', type: 'uint256' },
+      { indexed: false, name: 'shares', type: 'uint256' }
+    ],
+    name: 'Withdraw',
+    type: 'event'
   }
 ];
 
@@ -101,23 +139,33 @@ const ERC20_ABI = [
   },
   {
     inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' }
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' }
     ],
     name: 'allowance',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function'
   }
 ];
 
-// Sova Prime addresses
+// Sova Sepolia Testnet addresses
 const SPBTC_ADDRESS = '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f';
 const CONDUIT_ADDRESS = '0x4aB31F7ad938188E3F2e9c106697a52B13650906';
 
 class VaultService {
   constructor() {
     this.initialized = false;
+    this.web3 = null;
+    this.conduitContract = null;
+    this.spBTCContract = null;
   }
 
   initialize(web3) {
@@ -132,7 +180,7 @@ class VaultService {
       
       this.initialized = true;
       logger.info('Vault service initialized', { 
-        vault: CONDUIT_ADDRESS,
+        conduit: CONDUIT_ADDRESS,
         asset: SPBTC_ADDRESS 
       });
     } catch (error) {
@@ -146,34 +194,64 @@ class VaultService {
       throw new Error('Vault service not initialized');
     }
 
-    // Check current allowance
-    const currentAllowance = await this.spBTCContract.methods
-      .allowance(account.address, CONDUIT_ADDRESS)
-      .call();
+    try {
+      // Check spBTC balance
+      const balance = await this.spBTCContract.methods
+        .balanceOf(account.address)
+        .call();
 
-    // Only approve if needed
-    if (BigInt(currentAllowance) < amount) {
-      const approvalTx = await this.spBTCContract.methods
-        .approve(CONDUIT_ADDRESS, amount.toString())
+      if (BigInt(balance) < BigInt(amount)) {
+        throw new Error('Insufficient spBTC balance');
+      }
+
+      // Check max deposit limit
+      const maxDeposit = await this.conduitContract.methods
+        .maxDeposit(account.address)
+        .call();
+
+      if (BigInt(amount) > BigInt(maxDeposit)) {
+        throw new Error(`Deposit amount exceeds maximum allowed: ${maxDeposit}`);
+      }
+
+      // Check current allowance
+      const currentAllowance = await this.spBTCContract.methods
+        .allowance(account.address, CONDUIT_ADDRESS)
+        .call();
+
+      // Approve if needed
+      if (BigInt(currentAllowance) < BigInt(amount)) {
+        logger.info('Approving spBTC for vault', { amount: amount.toString() });
+        
+        const approvalTx = await this.spBTCContract.methods
+          .approve(CONDUIT_ADDRESS, amount.toString())
+          .send({ from: account.address });
+
+        logger.info('Approved spBTC for vault', { 
+          amount: amount.toString(), 
+          tx: approvalTx.transactionHash 
+        });
+      }
+
+      // Deposit to vault (ERC-4626 standard)
+      logger.info('Depositing to vault', { amount: amount.toString() });
+      
+      const depositTx = await this.conduitContract.methods
+        .deposit(amount.toString(), account.address)
         .send({ from: account.address });
 
-      logger.info('Approved spBTC for vault', { 
+      logger.info('Deposited to vault', { 
         amount: amount.toString(), 
-        tx: approvalTx.transactionHash 
+        tx: depositTx.transactionHash 
       });
+
+      return depositTx;
+    } catch (error) {
+      logger.error('Deposit to vault failed', { 
+        error: error.message,
+        amount: amount.toString() 
+      });
+      throw error;
     }
-
-    // Deposit to vault (ERC-4626 standard)
-    const depositTx = await this.conduitContract.methods
-      .deposit(amount.toString(), account.address)
-      .send({ from: account.address });
-
-    logger.info('Deposited to vault', { 
-      amount: amount.toString(), 
-      tx: depositTx.transactionHash 
-    });
-
-    return depositTx;
   }
 
   async withdrawFromVault(account, shares) {
@@ -181,17 +259,45 @@ class VaultService {
       throw new Error('Vault service not initialized');
     }
 
-    // Redeem shares for assets (ERC-4626 standard)
-    const redeemTx = await this.conduitContract.methods
-      .redeem(shares.toString(), account.address, account.address)
-      .send({ from: account.address });
+    try {
+      // Check shares balance
+      const balance = await this.conduitContract.methods
+        .balanceOf(account.address)
+        .call();
 
-    logger.info('Redeemed from vault', { 
-      shares: shares.toString(), 
-      tx: redeemTx.transactionHash 
-    });
+      if (BigInt(balance) < BigInt(shares)) {
+        throw new Error('Insufficient shares balance');
+      }
 
-    return redeemTx;
+      // Check max redeem limit
+      const maxRedeem = await this.conduitContract.methods
+        .maxRedeem(account.address)
+        .call();
+
+      if (BigInt(shares) > BigInt(maxRedeem)) {
+        throw new Error(`Redeem amount exceeds maximum allowed: ${maxRedeem}`);
+      }
+
+      // Redeem shares for assets (ERC-4626 standard)
+      logger.info('Redeeming from vault', { shares: shares.toString() });
+      
+      const redeemTx = await this.conduitContract.methods
+        .redeem(shares.toString(), account.address, account.address)
+        .send({ from: account.address });
+
+      logger.info('Redeemed from vault', { 
+        shares: shares.toString(), 
+        tx: redeemTx.transactionHash 
+      });
+
+      return redeemTx;
+    } catch (error) {
+      logger.error('Redeem from vault failed', { 
+        error: error.message,
+        shares: shares.toString() 
+      });
+      throw error;
+    }
   }
 
   async getVaultBalance(address) {
@@ -199,15 +305,20 @@ class VaultService {
       throw new Error('Vault service not initialized');
     }
 
-    const shares = await this.conduitContract.methods.balanceOf(address).call();
-    const assets = await this.conduitContract.methods
-      .convertToAssets(shares.toString())
-      .call();
+    try {
+      const shares = await this.conduitContract.methods.balanceOf(address).call();
+      const assets = await this.conduitContract.methods
+        .convertToAssets(shares.toString())
+        .call();
 
-    return {
-      shares: shares.toString(),
-      assets: assets.toString()
-    };
+      return {
+        shares: shares.toString(),
+        assets: assets.toString()
+      };
+    } catch (error) {
+      logger.error('Failed to get vault balance', { error: error.message });
+      throw error;
+    }
   }
 
   async getVaultStats() {
@@ -215,18 +326,60 @@ class VaultService {
       throw new Error('Vault service not initialized');
     }
 
-    const totalAssets = await this.conduitContract.methods.totalAssets().call();
-    const totalSupply = await this.conduitContract.methods.totalSupply().call();
-    const assetAddress = await this.conduitContract.methods.asset().call();
+    try {
+      const totalAssets = await this.conduitContract.methods.totalAssets().call();
+      const totalSupply = await this.conduitContract.methods.totalSupply().call();
+      const assetAddress = await this.conduitContract.methods.asset().call();
 
-    return {
-      totalAssets: totalAssets.toString(),
-      totalSupply: totalSupply.toString(),
-      assetAddress: assetAddress,
-      shareValue: totalSupply > 0 
+      // Calculate share value (price per share in basis points)
+      const shareValue = totalSupply > 0 
         ? (BigInt(totalAssets) * BigInt(10000) / BigInt(totalSupply)).toString()
-        : '10000'
-    };
+        : '10000';
+
+      return {
+        totalAssets: totalAssets.toString(),
+        totalSupply: totalSupply.toString(),
+        assetAddress: assetAddress,
+        shareValue: shareValue
+      };
+    } catch (error) {
+      logger.error('Failed to get vault stats', { error: error.message });
+      throw error;
+    }
+  }
+
+  async previewDeposit(assets) {
+    if (!this.initialized) {
+      throw new Error('Vault service not initialized');
+    }
+
+    try {
+      const shares = await this.conduitContract.methods
+        .convertToShares(assets.toString())
+        .call();
+      
+      return shares.toString();
+    } catch (error) {
+      logger.error('Failed to preview deposit', { error: error.message });
+      throw error;
+    }
+  }
+
+  async previewRedeem(shares) {
+    if (!this.initialized) {
+      throw new Error('Vault service not initialized');
+    }
+
+    try {
+      const assets = await this.conduitContract.methods
+        .convertToAssets(shares.toString())
+        .call();
+      
+      return assets.toString();
+    } catch (error) {
+      logger.error('Failed to preview redeem', { error: error.message });
+      throw error;
+    }
   }
 }
 
