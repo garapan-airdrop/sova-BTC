@@ -1,4 +1,3 @@
-
 const logger = require('../utils/logger');
 
 // Enhanced tRWA Token ABI (ERC-4626 compatible)
@@ -158,10 +157,15 @@ const ERC20_ABI = [
 
 // Network configuration - supports multiple networks
 const NETWORK_CONFIG = {
+  'sova-testnet': {
+    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
+    CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
+    name: 'Sova Sepolia Testnet'
+  },
   'sepolia': {
     SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
     CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
-    name: 'Ethereum Sepolia'
+    name: 'Ethereum Sepolia Testnet'
   }
 };
 
@@ -177,11 +181,11 @@ function getVaultConfig() {
       configured: true
     };
   }
-  
+
   // Check if a known network is explicitly requested
   if (process.env.VAULT_NETWORK) {
     const networkConfig = NETWORK_CONFIG[process.env.VAULT_NETWORK];
-    
+
     if (networkConfig) {
       logger.info('Using pre-configured network', { network: process.env.VAULT_NETWORK });
       return {
@@ -193,14 +197,14 @@ function getVaultConfig() {
       logger.error(`Available networks: ${Object.keys(NETWORK_CONFIG).join(', ')}`);
     }
   }
-  
+
   // No valid configuration - vault features disabled
   logger.info('Vault features disabled (not configured)');
   logger.info('To enable Sova Prime vault integration, set environment variables:');
   logger.info('  SPBTC_CONTRACT=0x... (spBTC token address)');
   logger.info('  CONDUIT_CONTRACT=0x... (Vault contract address)');
   logger.info('  VAULT_NETWORK=sepolia (or network name, optional)');
-  
+
   return {
     SPBTC_ADDRESS: null,
     CONDUIT_ADDRESS: null,
@@ -236,15 +240,15 @@ class VaultService {
       if (!VAULT_CONFIGURED || !SPBTC_ADDRESS || !CONDUIT_ADDRESS) {
         throw new Error('Vault contracts not configured. Set SPBTC_CONTRACT and CONDUIT_CONTRACT environment variables to enable vault features.');
       }
-      
+
       this.web3 = web3;
-      
+
       // Conduit is the tRWA token (ERC-4626 vault)
       this.conduitContract = new web3.eth.Contract(TRWA_ABI, CONDUIT_ADDRESS);
-      
+
       // spBTC is the underlying asset
       this.spBTCContract = new web3.eth.Contract(ERC20_ABI, SPBTC_ADDRESS);
-      
+
       // Verify contract has required methods
       try {
         await this.conduitContract.methods.asset().call();
@@ -256,7 +260,7 @@ class VaultService {
         });
         throw new Error(`Vault contract verification failed: ${error.message}. Please check that CONDUIT_CONTRACT address is correct.`);
       }
-      
+
       this.initialized = true;
       logger.info('Vault service initialized successfully', { 
         conduit: CONDUIT_ADDRESS,
@@ -301,7 +305,7 @@ class VaultService {
       // Approve if needed
       if (BigInt(currentAllowance) < BigInt(amount)) {
         logger.info('Approving spBTC for vault', { amount: amount.toString() });
-        
+
         const approvalTx = await this.spBTCContract.methods
           .approve(CONDUIT_ADDRESS, amount.toString())
           .send({ from: account.address });
@@ -314,7 +318,7 @@ class VaultService {
 
       // Deposit to vault (ERC-4626 standard)
       logger.info('Depositing to vault', { amount: amount.toString() });
-      
+
       const depositTx = await this.conduitContract.methods
         .deposit(amount.toString(), account.address)
         .send({ from: account.address });
@@ -360,7 +364,7 @@ class VaultService {
 
       // Redeem shares for assets (ERC-4626 standard)
       logger.info('Redeeming from vault', { shares: shares.toString() });
-      
+
       const redeemTx = await this.conduitContract.methods
         .redeem(shares.toString(), account.address, account.address)
         .send({ from: account.address });
@@ -452,7 +456,7 @@ class VaultService {
       const shares = await this.conduitContract.methods
         .convertToShares(assets.toString())
         .call();
-      
+
       return shares.toString();
     } catch (error) {
       logger.error('Failed to preview deposit', { error: error.message });
@@ -469,7 +473,7 @@ class VaultService {
       const assets = await this.conduitContract.methods
         .convertToAssets(shares.toString())
         .call();
-      
+
       return assets.toString();
     } catch (error) {
       logger.error('Failed to preview redeem', { error: error.message });
