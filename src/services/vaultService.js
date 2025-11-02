@@ -157,6 +157,11 @@ const ERC20_ABI = [
 
 // Network configuration - supports multiple networks
 const NETWORK_CONFIG = {
+  'sova-sepolia': {
+    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
+    CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
+    name: 'Sova Sepolia Testnet'
+  },
   'sova-testnet': {
     SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
     CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
