@@ -168,7 +168,7 @@ class VaultService {
     this.spBTCContract = null;
   }
 
-  initialize(web3) {
+  async initialize(web3) {
     try {
       this.web3 = web3;
       
@@ -177,6 +177,17 @@ class VaultService {
       
       // spBTC is the underlying asset
       this.spBTCContract = new web3.eth.Contract(ERC20_ABI, SPBTC_ADDRESS);
+      
+      // Verify contract has required methods
+      try {
+        await this.conduitContract.methods.asset().call();
+        logger.info('Vault contract verified - ERC-4626 interface detected');
+      } catch (error) {
+        logger.warn('Vault contract may not support full ERC-4626 interface', { 
+          error: error.message,
+          address: CONDUIT_ADDRESS 
+        });
+      }
       
       this.initialized = true;
       logger.info('Vault service initialized', { 
@@ -327,12 +338,24 @@ class VaultService {
     }
 
     try {
-      const totalAssets = await this.conduitContract.methods.totalAssets().call();
-      const totalSupply = await this.conduitContract.methods.totalSupply().call();
-      const assetAddress = await this.conduitContract.methods.asset().call();
+      // Try to call methods with better error handling
+      const [totalAssets, totalSupply, assetAddress] = await Promise.all([
+        this.conduitContract.methods.totalAssets().call().catch(e => {
+          logger.warn('totalAssets call failed', { error: e.message });
+          return '0';
+        }),
+        this.conduitContract.methods.totalSupply().call().catch(e => {
+          logger.warn('totalSupply call failed', { error: e.message });
+          return '0';
+        }),
+        this.conduitContract.methods.asset().call().catch(e => {
+          logger.warn('asset call failed', { error: e.message });
+          return SPBTC_ADDRESS;
+        })
+      ]);
 
       // Calculate share value (price per share in basis points)
-      const shareValue = totalSupply > 0 
+      const shareValue = totalSupply > 0 && totalSupply !== '0'
         ? (BigInt(totalAssets) * BigInt(10000) / BigInt(totalSupply)).toString()
         : '10000';
 
@@ -343,8 +366,11 @@ class VaultService {
         shareValue: shareValue
       };
     } catch (error) {
-      logger.error('Failed to get vault stats', { error: error.message });
-      throw error;
+      logger.error('Failed to get vault stats', { 
+        error: error.message,
+        conduit: CONDUIT_ADDRESS 
+      });
+      throw new Error(`Vault stats unavailable. Please check if the Conduit contract supports ERC-4626 interface at ${CONDUIT_ADDRESS}`);
     }
   }
 

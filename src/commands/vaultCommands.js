@@ -10,8 +10,10 @@ function registerVaultCommands(bot, web3Service, authMiddleware) {
     ? { web3: web3Service.getWeb3(), account: web3Service.getAccount() }
     : web3Service;
 
-  // Initialize vault service
-  vaultService.initialize(web3);
+  // Initialize vault service (async)
+  vaultService.initialize(web3).catch(err => {
+    logger.error('Vault service initialization failed', { error: err.message });
+  });
 
   bot.onText(/\/vaultinfo/, async (msg) => {
     const chatId = msg.chat.id;
