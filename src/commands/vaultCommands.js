@@ -32,8 +32,8 @@ function registerVaultCommands(bot, web3Service, authMiddleware) {
 
 Sova Prime vault commands are now available:
 • /vaultinfo - Check vault stats
-• /vaultdeposit <amount> - Deposit to vault
-• /vaultwithdraw <shares> - Withdraw from vault
+• \`/vaultdeposit\` <amount> - Deposit to vault
+• \`/vaultwithdraw\` <shares> - Withdraw from vault
 
 Vault is ready for use!
         `, { parse_mode: 'Markdown' }).catch(() => {});

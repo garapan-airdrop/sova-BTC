@@ -143,7 +143,7 @@ Example: \`/bridge 0.05\`
 Bridge transfers usually complete within 5-10 minutes.
 Check your Sova wallet balance after confirmation.
 
-💡 Use /bridgestatus ${result.txHash} to track progress
+💡 Use \`/bridgestatus ${result.txHash}\` to track progress
       `;
 
       bot.editMessageText(successMsg, {
