@@ -235,8 +235,10 @@ Selamat datang di Sova BTC Faucet!
 /faucet → Claim sovaBTC (test user flow)
    • Untuk testing pengalaman user
    • Subject to daily limit (1x per hari)
+      `;
 
-*🔗 Documentation:*
+      const adminHelpMsg2 = `
+*🔗 Documentation & Links:*
 • Sova Prime: https://docs.sova.io/sova-prime
 • Explorer: https://explorer.testnet.sova.io
 
@@ -256,9 +258,16 @@ Selamat datang di Sova BTC Faucet!
 • Keep Repl private (jangan publish)
 • ALLOWED_USERS sudah di-set untuk security
       `;
-      bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' }).catch(err => {
-        logger.error('Error sending admin help', { error: err.message });
-      });
+
+      bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' })
+        .then(() => {
+          return bot.sendMessage(chatId, adminHelpMsg2, { parse_mode: 'Markdown' });
+        })kdown' }).catch(err => {
+          logger.error('Error sending admin help (part 2)', { error: err.message });
+        })
+        .catch(err => {
+          logger.error('Error sending admin help (part 1)', { error: err.message });
+        });
     } else {
       const userHelpMsg = `
 📖 *Panduan Pengguna - Sova BTC Faucet*
