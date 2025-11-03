@@ -91,17 +91,18 @@ Halo ${username}! 👋
 Selamat datang di Sova BTC Faucet!
 
 *🚰 Cara Claim Token:*
-1. Ketik /faucet
-2. Kirimkan alamat wallet EVM Anda
-3. Terima sovaBTC gratis!
+1\\. Ketik /faucet
+2\\. Kirimkan alamat wallet EVM Anda
+3\\. Terima sovaBTC gratis!
 
 *📋 Aturan:*
 • Maksimal 1 klaim per hari
 • Reset setiap hari jam 00:00 WIB
-• Alamat harus valid (format 0x...)
+• Alamat harus valid (format 0x\\.\\.\\.)
 
-• /help - Panduan lengkap
-• /faucet - Mulai claim token
+*🎯 Command:*
+• /help \\- Panduan lengkap
+• /faucet \\- Mulai claim token
 
 💡 User ID Anda: \`${userId}\`
       `;
