@@ -177,6 +177,44 @@ Dokumen ini merangkum semua peningkatan yang telah diimplementasikan pada sovaBT
 
 ---
 
+## 🏦 Vault Features (Sova Prime Integration)
+
+### Available Commands
+
+#### `/vaultinfo`
+Check vault statistics and your position
+- Shows total assets and shares in vault
+- Displays current share value and conversion rate
+- Shows your personal vault balance
+
+#### `/vaultdeposit <amount>`
+Deposit sovaBTC into the vault to receive vault shares
+- **Example:** `/vaultdeposit 1.5`
+- Automatically approves vault contract if needed
+- Returns vault shares based on current conversion rate
+- Shows transaction hash and gas used
+
+#### `/vaultwithdraw <shares>`
+Withdraw your vault shares to receive sovaBTC back
+- **Example:** `/vaultwithdraw 0.5`
+- Redeems your shares for the underlying sovaBTC
+- Shows transaction hash and gas used
+
+### Configuration
+Set these environment variables to enable vault features:
+```bash
+SPBTC_CONTRACT=0x5Db496debB227455cE9f482f9E443f1073a55456
+CONDUIT_CONTRACT=0x4aB31F7ad938188E3F2e9c106697a52B13650906
+VAULT_NETWORK=sova-sepolia
+```
+
+### How It Works
+1. **Deposit:** User approves spBTC → Bot deposits to vault → User receives shares
+2. **Withdraw:** User redeems shares → Bot withdraws from vault → User receives spBTC
+3. **Conversion:** Shares represent proportional ownership of vault assets
+
+---
+
 ## 🚀 Future Enhancements (Recommended)
 
 ### High Priority
