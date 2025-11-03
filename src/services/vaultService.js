@@ -158,17 +158,17 @@ const ERC20_ABI = [
 // Network configuration - supports multiple networks
 const NETWORK_CONFIG = {
   'sova-sepolia': {
-    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
-    CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
+    SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456', // sovaBTC (vault asset)
+    CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906', // Conduit vault
     name: 'Sova Sepolia Testnet'
   },
   'sova-testnet': {
-    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
+    SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456',
     CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
     name: 'Sova Sepolia Testnet'
   },
   'sepolia': {
-    SPBTC_ADDRESS: '0x3b5B1c8D1aCf8e253C06B7a6E77D1Cade71D6b3f',
+    SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456',
     CONDUIT_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906',
     name: 'Ethereum Sepolia Testnet'
   }
