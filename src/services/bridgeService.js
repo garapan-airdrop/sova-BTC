@@ -20,7 +20,7 @@ const BRIDGE_ABI = [
 
 // Bridge configuration
 const BRIDGE_CONFIG = {
-  SEPOLIA_RPC: 'https://rpc.sepolia.org',
+  SEPOLIA_RPC: 'https://ethereum-sepolia-rpc.publicnode.com',
   SEPOLIA_CHAIN_ID: 11155111,
   BRIDGE_CONTRACT: '0xc497E485C414dB594F0030fa6C32365578C7E99E',
   DEFAULT_GAS_LIMIT: 21000,
