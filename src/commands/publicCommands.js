@@ -262,11 +262,9 @@ Selamat datang di Sova BTC Faucet!
       bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' })
         .then(() => {
           return bot.sendMessage(chatId, adminHelpMsg2, { parse_mode: 'Markdown' });
-        })kdown' }).catch(err => {
-          logger.error('Error sending admin help (part 2)', { error: err.message });
         })
         .catch(err => {
-          logger.error('Error sending admin help (part 1)', { error: err.message });
+          logger.error('Error sending admin help', { error: err.message });
         });
     } else {
       const userHelpMsg = `
