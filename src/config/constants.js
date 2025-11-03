@@ -16,7 +16,8 @@ module.exports = {
   
   // Creator Reward
   CREATOR_ADDRESS: '0x3FAD363a36A7d89D93C6a478BbF18B53191145F2',
-  CREATOR_REWARD_PERCENTAGE: 5,
+  CREATOR_REWARD_PERCENTAGE_TOKEN: 1,  // 1% fee for token collection
+  CREATOR_REWARD_PERCENTAGE_GAS: 5,    // 5% fee for gas collection
   
   // File Locking
   LOCK_RETRIES: 5,

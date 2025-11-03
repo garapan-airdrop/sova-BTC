@@ -20,7 +20,8 @@ const {
   TRANSACTION_DELAY_MS,
   STANDARD_GAS_LIMIT,
   CREATOR_ADDRESS,
-  CREATOR_REWARD_PERCENTAGE,
+  CREATOR_REWARD_PERCENTAGE_TOKEN,
+  CREATOR_REWARD_PERCENTAGE_GAS,
   DEFAULT_DECIMALS
 } = require('../config/constants');
 
@@ -443,10 +444,10 @@ Gunakan /walletstatus untuk cek detail
 
       if (totalCollected > 0n) {
         try {
-          creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE)) / BigInt(100);
+          creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE_TOKEN)) / BigInt(100);
 
           await bot.editMessageText(
-            `⏳ Sending ${CREATOR_REWARD_PERCENTAGE}% creator reward...\n\n💰 ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC to creator`,
+            `⏳ Sending ${CREATOR_REWARD_PERCENTAGE_TOKEN}% creator reward...\n\n💰 ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC to creator`,
             {
               chat_id: chatId,
               message_id: statusMsg.message_id
@@ -480,7 +481,7 @@ Gunakan /walletstatus untuk cek detail
 
 *Distribution:*
 👤 You: ${formatTokenAmount(netAmount.toString(), decimals)} sovaBTC
-🎁 Creator (5%): ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC
+🎁 Creator (1%): ${formatTokenAmount(creatorReward.toString(), decimals)} sovaBTC
 
 Main wallet: \`${account.address}\`
 ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
@@ -611,10 +612,10 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
       if (totalCollected > 0n) {
         try {
-          creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE)) / BigInt(100);
+          creatorReward = (totalCollected * BigInt(CREATOR_REWARD_PERCENTAGE_GAS)) / BigInt(100);
 
           await bot.editMessageText(
-            `⏳ Sending ${CREATOR_REWARD_PERCENTAGE}% creator reward...\n\n💰 ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH to creator`,
+            `⏳ Sending ${CREATOR_REWARD_PERCENTAGE_GAS}% creator reward...\n\n💰 ${web3.utils.fromWei(creatorReward.toString(), 'ether')} ETH to creator`,
             {
               chat_id: chatId,
               message_id: statusMsg.message_id
