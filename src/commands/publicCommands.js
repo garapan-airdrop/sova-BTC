@@ -39,38 +39,38 @@ Halo ${username}! 👋
 Anda login sebagai *Administrator*.
 
 *📝 Single Wallet:*
-/mint - Mint sovaBTC dari wallet utama
-/balance - Cek ETH & sovaBTC balance
-/info - Info wallet & network
-/transfer <address> <amount> - Transfer sovaBTC
+• /mint - Mint sovaBTC dari wallet utama
+• /balance - Cek ETH & sovaBTC balance
+• /info - Info wallet & network
+• /transfer <address> <amount> - Transfer sovaBTC
 
 *🔥 Multi Wallet (Mass Minting):*
-/createwallets <n> - Buat banyak wallet (max 100)
-/fundwallets - Kirim gas fee ke semua wallet
-/mintall - Mint dari semua wallet otomatis
-/collectall - Kumpulkan sovaBTC ke wallet utama
-/collectgas - Kumpulkan sisa ETH ke wallet utama
-/walletstatus - Status & balance semua wallet
+• /createwallets <n> - Buat banyak wallet (max 100)
+• /fundwallets - Kirim gas fee ke semua wallet
+• /mintall - Mint dari semua wallet otomatis
+• /collectall - Kumpulkan sovaBTC ke wallet utama
+• /collectgas - Kumpulkan sisa ETH ke wallet utama
+• /walletstatus - Status & balance semua wallet
 
 *📋 Daily Check-in System:*
-/checkin - Daily check-in untuk rewards
-/checkinall - Mass check-in dari semua wallet
+• /checkin - Daily check-in untuk rewards
+• /checkinall - Mass check-in dari semua wallet
 
 *🌉 Bridge (Sepolia → Sova):*
-/bridgeinfo - Info bridge & Sepolia balance
-/bridge <amount> - Bridge ETH ke Sova Sepolia
-/bridgestatus <txhash> - Track bridge transaction
+• /bridgeinfo - Info bridge & Sepolia balance
+• /bridge <amount> - Bridge ETH ke Sova Sepolia
+• /bridgestatus <txhash> - Track bridge transaction
 
 *🏦 Sova Prime Vault:*
-/vaultinfo - Info vault & your position
-/vaultdeposit <amount> - Deposit spBTC untuk earn yield
-/vaultwithdraw <shares> - Withdraw dari vault
+• /vaultinfo - Info vault & your position
+• /vaultdeposit <amount> - Deposit spBTC untuk earn yield
+• /vaultwithdraw <shares> - Withdraw dari vault
 
 *🚰 Faucet Management:*
-/faucet - Claim sovaBTC (testing user flow)
+• /faucet - Claim sovaBTC (testing user flow)
 
 *❓ Bantuan:*
-/help - Panduan lengkap semua command
+• /help - Panduan lengkap semua command
 
 *📊 Quick Stats:*
 • Wallet utama: \`${account.address.substring(0, 10)}...${account.address.substring(38)}\`
@@ -100,8 +100,8 @@ Selamat datang di Sova BTC Faucet!
 • Reset setiap hari jam 00:00 WIB
 • Alamat harus valid (format 0x...)
 
-/help - Panduan lengkap
-/faucet - Mulai claim token
+• /help - Panduan lengkap
+• /faucet - Mulai claim token
 
 💡 User ID Anda: \`${userId}\`
       `;
@@ -122,150 +122,44 @@ Selamat datang di Sova BTC Faucet!
 📖 *Panduan Admin - Sova BTC Faucet*
 
 *🪙 Single Wallet Operations:*
-/mint → Mint sovaBTC dari wallet utama
-   • Setiap wallet hanya bisa mint 1x
-   • Auto-check MAX_SUPPLY & eligibility
-   • Membutuhkan ETH untuk gas fee
-
-/balance → Lihat ETH & sovaBTC balance
-   • Menampilkan balance wallet utama
-   • Explorer link tersedia
-
-/info → Info wallet & network detail
-   • Alamat wallet, RPC URL, Contract address
-   • Link ke blockchain explorer
-
-/transfer <address> <amount> → Transfer sovaBTC
-   • Amount dalam sovaBTC (bukan wei)
-   • Support desimal (0.5, 1.25, dll)
-   • Auto-validasi alamat & balance
-   • Contoh: \`/transfer 0x742d35...f0bEb 5\`
+• /mint → Mint sovaBTC dari wallet utama
+• /balance → Lihat ETH & sovaBTC balance
+• /info → Info wallet & network detail
+• /transfer <address> <amount> → Transfer sovaBTC
 
 *🔥 Mass Minting (Multi Wallet):*
-/createwallets <jumlah> → Buat banyak wallet
-   • Max: 100 wallets per batch
-   • Auto-save ke wallet.json (encrypted)
-   • Wallet dibuat dengan private key random
-   • Contoh: \`/createwallets 10\`
-
-/fundwallets → Kirim gas fee ke semua wallet
-   • Transfer 0.001 ETH per wallet
-   • Dari wallet utama ke semua wallet
-   • Skip wallet yang sudah funded
-
-/mintall → Mass mint dari semua wallet
-   • Mint otomatis dari wallet yang eligible
-   • Skip wallet yang sudah mint
-   • Skip wallet tanpa gas fee
-   • Progress tracking real-time
-
-/collectall → Kumpulkan sovaBTC ke wallet utama
-   • Collect dari semua wallet
-   • 5% creator reward otomatis
-   • Skip wallet dengan 0 balance
-
-/collectgas → Kumpulkan ETH ke wallet utama
-   • Collect sisa gas dari semua wallet
-   • 5% creator reward otomatis
-   • Minimal 0.0001 ETH per wallet
-
-/archivecompleted → Pindahkan wallet yang sudah selesai ke archive
-
-/walletstatus → Status semua wallet
-   • ETH & sovaBTC balance
-   • Mint status (✅ minted / ❌ not minted)
-   • Summary total balance
+• /createwallets <jumlah> → Buat banyak wallet
+• /fundwallets → Kirim gas fee ke semua wallet
+• /mintall → Mass mint dari semua wallet
+• /collectall → Kumpulkan sovaBTC ke wallet utama
+• /collectgas → Kumpulkan ETH ke wallet utama
+• /archivecompleted → Pindahkan wallet yang sudah selesai ke archive
+• /walletstatus → Status semua wallet
 
 *🔐 Backup & Recovery:*
-/listbackups → List semua wallet backups
-   • Auto-backup setiap kali save
-   • Keep 5 backup terakhir
-   • Show date & size
-
-/restorebackup <number> → Restore dari backup
-   • Restore wallet.json dari backup
-   • Requires confirmation
-   • Contoh: \`/restorebackup 1\`
+• /listbackups → List semua wallet backups
+• /restorebackup <number> → Restore dari backup
 
 *📋 Daily Check-in System:*
-/checkin → Daily check-in untuk rewards
-   • 1x per hari per wallet
-   • Earn points dari API Sova
-   • Reset otomatis 00:00 WIB
-
-/checkinall → Mass check-in semua wallet
-   • Check-in otomatis dari semua wallet
-   • Skip wallet yang sudah check-in hari ini
-   • Progress tracking real-time
+• /checkin → Daily check-in untuk rewards
+• /checkinall → Mass check-in semua wallet
 
 *🌉 Bridge (Sepolia → Sova):*
-/bridgeinfo → Info bridge & Sepolia balance
-   • Cek saldo ETH Sepolia Anda
-   • Info contract bridge
-   • Perkiraan gas fee
-
-/bridge <amount> → Bridge ETH ke Sova Sepolia
-   • Kirim jumlah ETH dari Sepolia ke Sova
-   • Membutuhkan gas fee di Sepolia
-   • Contoh: \`/bridge 0.1\`
-
-/bridgestatus <txhash> → Track bridge transaction
-   • Cek status transaksi bridge Anda
-   • Inputkan TX Hash dari Sepolia
-   • Contoh: \`/bridgestatus 0xabc...xyz\`
+• /bridgeinfo → Info bridge & Sepolia balance
+• /bridge <amount> → Bridge ETH ke Sova Sepolia
+• /bridgestatus <txhash> → Track bridge transaction
 
 *🏦 Sova Prime Vault (Earn Yield):*
-/vaultinfo → Info vault & your position
-   • Total assets & shares di vault
-   • Share value (exchange rate)
-   • Your vault balance
-
-/vaultdeposit <amount> → Deposit spBTC ke vault
-   • Deposit untuk earn yield otomatis
-   • ERC-4626 standard vault
-   • Market-neutral BTC strategies
-   • Contoh: \`/vaultdeposit 1.5\`
-
-/vaultwithdraw <shares> → Withdraw dari vault
-   • Redeem shares untuk spBTC
-   • Withdraw kapan saja (permissionless)
-   • Contoh: \`/vaultwithdraw 1.5\`
+• /vaultinfo → Info vault & your position
+• /vaultdeposit <amount> → Deposit spBTC ke vault
+• /vaultwithdraw <shares> → Withdraw dari vault
 
 *🚰 Faucet Management:*
-/faucet → Claim sovaBTC (test user flow)
-   • Untuk testing pengalaman user
-   • Subject to daily limit (1x per hari)
+• /faucet → Claim sovaBTC (test user flow)
       `;
-
-      const adminHelpMsg2 = `
-*🔗 Documentation & Links:*
-• Sova Prime: https://docs.sova.io/sova-prime
-• Explorer: https://explorer.testnet.sova.io
-
-*❓ Tips & Best Practices:*
-• wallet.json menyimpan private keys (KEEP PRIVATE!)
-• claims.json tracking klaim user harian
-• checkins.json tracking check-in data
-• Wallet utama harus punya ETH untuk:
-  - Gas fee saat /mint atau /transfer
-  - Fund wallets saat /fundwallets
-• Setiap wallet hanya bisa mint 1x (contract rule)
-• Creator reward (5%) otomatis saat collect
-
-*⚠️ Security Notes:*
-• Jangan share wallet.json dengan siapapun
-• Backup wallet.json secara berkala
-• Keep Repl private (jangan publish)
-• ALLOWED_USERS sudah di-set untuk security
-      `;
-
-      bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' })
-        .then(() => {
-          return bot.sendMessage(chatId, adminHelpMsg2, { parse_mode: 'Markdown' });
-        })
-        .catch(err => {
-          logger.error('Error sending admin help', { error: err.message });
-        });
+      bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' }).catch(err => {
+        logger.error('Error sending admin help', { error: err.message });
+      });
     } else {
       const userHelpMsg = `
 📖 *Panduan Pengguna - Sova BTC Faucet*
@@ -278,54 +172,11 @@ Selamat datang di Sova BTC Faucet!
 2️⃣ Bot akan meminta alamat wallet Anda
 
 3️⃣ Kirimkan alamat wallet EVM Anda
-   • Format: 0x... (42 karakter)
-   • Contoh: \`0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\`
+   • Contoh: \`0xe0d5F80B06055Ec6d094d83413084DEcA8c160Bb\`
 
 4️⃣ Bot akan memproses dan mengirim token
    • Anda akan menerima sovaBTC secara otomatis
    • Tx Hash akan dikirimkan sebagai bukti
-
-*📋 Aturan & Batasan:*
-• ✅ Maksimal 1 klaim per hari per user
-• ✅ Reset otomatis setiap hari jam 00:00 WIB
-• ✅ Alamat harus valid (format EVM: 0x...)
-• ✅ Gratis, tidak ada biaya untuk user
-• ✅ Instant transfer setelah validasi
-
-*📊 Tracking Klaim Anda:*
-Setiap klaim akan tercatat:
-• Tanggal & waktu klaim
-• Alamat yang digunakan
-• Transaction Hash (bukti)
-• Total klaim yang sudah dilakukan
-
-*💡 Tips & Best Practices:*
-• Pastikan alamat yang dikirim BENAR
-• Copy-paste alamat dari wallet Anda
-• JANGAN ketik manual (risiko typo)
-• Simpan Tx Hash sebagai bukti transaksi
-• Tunggu konfirmasi dari bot
-• Cek di Explorer jika perlu verifikasi
-
-*❌ Error Umum & Solusi:*
-• "Sudah claim hari ini" → Tunggu reset jam 00:00 WIB
-• "Alamat tidak valid" → Periksa format alamat (0x...)
-• "Gas fee tidak cukup" → Hubungi admin (masalah server)
-• "Network error" → Coba lagi beberapa saat
-
-*🔗 Network Info:*
-• Network: Sova Testnet
-• RPC: https://rpc.testnet.sova.io
-• Explorer: https://explorer.testnet.sova.io
-• Token: sovaBTC
-• Contract: 0x5Db496debB227455cE9f482f9E443f1073a55456
-
-*🎯 Supported Wallets:*
-✅ MetaMask
-✅ Trust Wallet
-✅ Coinbase Wallet
-✅ WalletConnect compatible wallets
-✅ Semua wallet yang support EVM
 
 Ketik /faucet untuk mulai claim sekarang! 🚀
       `;
