@@ -5,6 +5,7 @@
 
 # Dependencies
 node_modules/
+attached_assets/
 
 # Logs
 logs/
@@ -16,3 +17,8 @@ replit.md
 # OS files
 .DS_Store
 Thumbs.db
+
+# Sensitive wallet & data files - NEVER commit!
+wallet.json
+minted_wallets.json
+claims.json
