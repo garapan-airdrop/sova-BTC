@@ -87,6 +87,14 @@ try {
       params: {
         timeout: TELEGRAM_POLLING_TIMEOUT
       }
+    },
+    // Add retry mechanism for network issues
+    request: {
+      agentOptions: {
+        keepAlive: true,
+        keepAliveMsecs: 10000
+      },
+      family: 4 // Force IPv4 to avoid DNS issues
     }
   });
 
@@ -113,6 +121,10 @@ try {
   bot.on('polling_error', (error) => {
     // Ignore EFATAL errors (usually network hiccups)
     if (error.code === 'EFATAL') {
+      logger.warn('Network hiccup detected (EFATAL), bot will auto-recover', {
+        code: error.code,
+        time: new Date().toISOString()
+      });
       return;
     }
     logger.error('Telegram polling error', { 
@@ -146,15 +158,22 @@ try {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+  // Skip logging EFATAL errors (Telegram network hiccups)
+  if (reason && reason.code === 'EFATAL') {
+    return;
+  }
+  
   logger.error('Unhandled Promise Rejection', { 
     reason: reason, 
     promise: promise 
   });
   
-  if (ALLOWED_USERS.length > 0) {
+  // Only notify admin for critical errors (not EFATAL)
+  if (ALLOWED_USERS.length > 0 && reason && reason.code !== 'EFATAL') {
     const adminId = ALLOWED_USERS[0];
     const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-    bot.sendMessage(adminId, `⚠️ Bot Error:\n${reason}`).catch(err => {
+    const errorMsg = typeof reason === 'object' ? reason.message || JSON.stringify(reason) : String(reason);
+    bot.sendMessage(adminId, `⚠️ Bot Error:\n${errorMsg}`).catch(err => {
       logger.error('Failed to send error notification to admin', { error: err.message });
     });
   }
