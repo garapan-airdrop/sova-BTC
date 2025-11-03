@@ -4,6 +4,7 @@
 # Sensitive files - NEVER commit these
 wallet.json
 claims.json
+minted_wallets.json
 
 # Backups - encrypted but still sensitive
 backups/
