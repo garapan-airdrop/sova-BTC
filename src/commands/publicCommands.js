@@ -56,13 +56,18 @@ Anda login sebagai *Administrator*.
 /checkin - Daily check-in untuk rewards
 /checkinall - Mass check-in dari semua wallet
 
-*🚰 Faucet Management:*
-/faucet - Claim sovaBTC (testing user flow)
+*🌉 Bridge (Sepolia → Sova):*
+/bridgeinfo - Info bridge & Sepolia balance
+/bridge <amount> - Bridge ETH ke Sova Sepolia
+/bridgestatus <txhash> - Track bridge transaction
 
 *🏦 Sova Prime Vault:*
 /vaultinfo - Info vault & your position
 /vaultdeposit <amount> - Deposit spBTC untuk earn yield
 /vaultwithdraw <shares> - Withdraw dari vault
+
+*🚰 Faucet Management:*
+/faucet - Claim sovaBTC (testing user flow)
 
 *❓ Bantuan:*
 /help - Panduan lengkap semua command
@@ -192,6 +197,22 @@ Selamat datang di Sova BTC Faucet!
    • Check-in otomatis dari semua wallet
    • Skip wallet yang sudah check-in hari ini
    • Progress tracking real-time
+
+*🌉 Bridge (Sepolia → Sova):*
+/bridgeinfo → Info bridge & Sepolia balance
+   • Cek saldo ETH Sepolia Anda
+   • Info contract bridge
+   • Perkiraan gas fee
+
+/bridge <amount> → Bridge ETH ke Sova Sepolia
+   • Kirim jumlah ETH dari Sepolia ke Sova
+   • Membutuhkan gas fee di Sepolia
+   • Contoh: \`/bridge 0.1\`
+
+/bridgestatus <txhash> → Track bridge transaction
+   • Cek status transaksi bridge Anda
+   • Inputkan TX Hash dari Sepolia
+   • Contoh: \`/bridgestatus 0xabc...xyz\`
 
 *🏦 Sova Prime Vault (Earn Yield):*
 /vaultinfo → Info vault & your position

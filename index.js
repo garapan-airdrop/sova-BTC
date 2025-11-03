@@ -11,6 +11,7 @@ const { registerAdminCommands } = require('./src/commands/adminCommands');
 const { registerWalletCommands } = require('./src/commands/walletCommands');
 const { registerCheckinCommands } = require('./src/commands/checkinCommands');
 const { registerVaultCommands } = require('./src/commands/vaultCommands');
+const { registerBridgeCommands } = require('./src/commands/bridgeCommands');
 const { TELEGRAM_POLLING_INTERVAL, TELEGRAM_POLLING_TIMEOUT, TELEGRAM_MIN_TIME_MS, TELEGRAM_MAX_CONCURRENT } = require('./src/config/constants');
 
 try {
@@ -107,6 +108,7 @@ try {
   registerWalletCommands(bot, web3Service, authMiddleware);
   registerCheckinCommands(bot, web3Service, authMiddleware);
   registerVaultCommands(bot, web3Service, authMiddleware);
+  registerBridgeCommands(bot, web3Service, authMiddleware);
 
   bot.on('polling_error', (error) => {
     // Ignore EFATAL errors (usually network hiccups)
