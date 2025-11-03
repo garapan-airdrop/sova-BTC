@@ -239,6 +239,26 @@ class VaultService {
     this.spBTCContract = null;
   }
 
+  // Helper: Retry contract calls with exponential backoff
+  async retryCall(fn, maxRetries = 3, delay = 1000) {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (i === maxRetries - 1) throw error;
+        
+        const waitTime = delay * Math.pow(2, i);
+        logger.warn(`Contract call failed, retrying in ${waitTime}ms...`, {
+          attempt: i + 1,
+          maxRetries,
+          error: error.message
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
   async initialize(web3) {
     try {
       // Check if vault is configured
@@ -254,16 +274,35 @@ class VaultService {
       // spBTC is the underlying asset
       this.spBTCContract = new web3.eth.Contract(ERC20_ABI, SPBTC_ADDRESS);
 
-      // Verify contract has required methods
+      // Verify contract has required methods (with graceful fallback and retry)
       try {
-        await this.conduitContract.methods.asset().call();
-        logger.info('Vault contract verified - ERC-4626 interface detected');
-      } catch (error) {
-        logger.warn('Vault contract may not support full ERC-4626 interface', { 
-          error: error.message,
-          address: CONDUIT_ADDRESS 
+        const assetAddress = await this.retryCall(() => 
+          this.conduitContract.methods.asset().call()
+        );
+        logger.info('Vault contract verified - ERC-4626 interface detected', {
+          asset: assetAddress,
+          vault: CONDUIT_ADDRESS
         });
-        throw new Error(`Vault contract verification failed: ${error.message}. Please check that CONDUIT_CONTRACT address is correct.`);
+      } catch (error) {
+        // If asset() fails, try alternative verification with totalSupply()
+        logger.warn('asset() call failed, trying alternative verification', { 
+          error: error.message 
+        });
+        
+        try {
+          await this.retryCall(() =>
+            this.conduitContract.methods.totalSupply().call()
+          );
+          logger.info('Vault contract verified via totalSupply() - proceeding with limited interface');
+        } catch (fallbackError) {
+          logger.error('Vault contract verification failed completely', {
+            primaryError: error.message,
+            fallbackError: fallbackError.message,
+            address: CONDUIT_ADDRESS,
+            rpc: this.web3.currentProvider.host || 'unknown'
+          });
+          throw new Error(`Vault contract at ${CONDUIT_ADDRESS} is not accessible. Please verify the contract is deployed on Sova Sepolia testnet and RPC is working.`);
+        }
       }
 
       this.initialized = true;
@@ -416,26 +455,35 @@ class VaultService {
     }
 
     try {
-      // Try to call methods with better error handling
-      const [totalAssets, totalSupply, assetAddress] = await Promise.all([
-        this.conduitContract.methods.totalAssets().call().catch(e => {
-          logger.warn('totalAssets call failed', { error: e.message });
-          return '0';
-        }),
-        this.conduitContract.methods.totalSupply().call().catch(e => {
-          logger.warn('totalSupply call failed', { error: e.message });
-          return '0';
-        }),
-        this.conduitContract.methods.asset().call().catch(e => {
-          logger.warn('asset call failed', { error: e.message });
-          return SPBTC_ADDRESS;
-        })
-      ]);
+      // Try to get totalSupply first (most reliable)
+      const totalSupply = await this.conduitContract.methods.totalSupply().call();
+      
+      // Try totalAssets with fallback
+      let totalAssets = '0';
+      try {
+        totalAssets = await this.conduitContract.methods.totalAssets().call();
+      } catch (e) {
+        logger.warn('totalAssets not available, using totalSupply as estimate', { error: e.message });
+        totalAssets = totalSupply; // Fallback: assume 1:1 ratio
+      }
+
+      // Try asset address with fallback
+      let assetAddress = SPBTC_ADDRESS;
+      try {
+        assetAddress = await this.conduitContract.methods.asset().call();
+      } catch (e) {
+        logger.warn('asset() not available, using configured spBTC address', { error: e.message });
+      }
 
       // Calculate share value (price per share in basis points)
       const shareValue = totalSupply > 0 && totalSupply !== '0'
         ? (BigInt(totalAssets) * BigInt(10000) / BigInt(totalSupply)).toString()
         : '10000';
+
+      logger.info('Vault stats retrieved successfully', {
+        totalAssets: totalAssets.toString(),
+        totalSupply: totalSupply.toString()
+      });
 
       return {
         totalAssets: totalAssets.toString(),
@@ -448,7 +496,7 @@ class VaultService {
         error: error.message,
         conduit: CONDUIT_ADDRESS 
       });
-      throw new Error(`Vault stats unavailable. Please check if the Conduit contract supports ERC-4626 interface at ${CONDUIT_ADDRESS}`);
+      throw new Error(`Cannot connect to vault contract at ${CONDUIT_ADDRESS}. Please check network connection and contract deployment.`);
     }
   }
 
