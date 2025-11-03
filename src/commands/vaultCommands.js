@@ -165,7 +165,7 @@ Assets: \`${formatTokenAmount(userBalance.assets, DEFAULT_DECIMALS)}\` spBTC
       const statusMsg = await bot.sendMessage(chatId, `
 🏦 *Depositing to Vault...*
 
-⏳ Step 1/3: Checking balance...
+⏳ Step 1/4: Checking balance and limits...
       `, { parse_mode: 'Markdown' });
 
       const spBTCBalance = await vaultService.spBTCContract.methods
@@ -185,11 +185,49 @@ Required: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
         return;
       }
 
+      // Check max deposit allowed by vault
+      const maxDeposit = await vaultService.conduitContract.methods
+        .maxDeposit(account.address)
+        .call();
+
+      if (BigInt(maxDeposit) === BigInt(0)) {
+        bot.editMessageText(`❌ *Vault Deposits Disabled!*
+
+The vault is currently not accepting deposits.
+This could be because:
+• Vault is paused
+• Vault has reached maximum capacity
+• Deposits temporarily disabled
+
+Please try again later or contact support.
+        `, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: 'Markdown'
+        });
+        return;
+      }
+
+      if (BigInt(amount) > BigInt(maxDeposit)) {
+        bot.editMessageText(`❌ *Deposit amount exceeds vault limit!*
+
+Maximum allowed: ${formatTokenAmount(maxDeposit.toString(), DEFAULT_DECIMALS)} spBTC
+Your request: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
+
+Please reduce your deposit amount.
+        `, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: 'Markdown'
+        });
+        return;
+      }
+
       await bot.editMessageText(`
 🏦 *Depositing to Vault...*
 
-✅ Step 1/3: Balance checked
-⏳ Step 2/3: Approving spBTC...
+✅ Step 1/4: Balance and limits checked
+⏳ Step 2/4: Approving spBTC...
       `, {
         chat_id: chatId,
         message_id: statusMsg.message_id,
@@ -198,10 +236,14 @@ Required: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
 
       const tx = await vaultService.depositToVault(account, amount);
 
+      // Preview shares received
+      const shares = tx.events?.Deposit?.returnValues?.shares || 'N/A';
+
       bot.editMessageText(`
 ✅ *Deposit Successful!*
 
-💰 Amount: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
+💰 Deposited: ${formatTokenAmount(amount.toString(), DEFAULT_DECIMALS)} spBTC
+📊 Shares Received: ${shares !== 'N/A' ? formatTokenAmount(shares, DEFAULT_DECIMALS) : 'Check explorer'}
 📄 TX Hash: \`${tx.transactionHash}\`
 ⛽ Gas Used: ${tx.gasUsed.toString()}
 

@@ -159,17 +159,20 @@ const ERC20_ABI = [
 const NETWORK_CONFIG = {
   'sova-sepolia': {
     SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456', // sovaBTC (vault asset)
-    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (CORRECT ADDRESS)
+    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (for deposit calls)
+    MODULE_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906', // Module contract (for approvals)
     name: 'Sova Sepolia Testnet'
   },
   'sova-testnet': {
     SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456',
-    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (CORRECT ADDRESS)
+    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (for deposit calls)
+    MODULE_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906', // Module contract (for approvals)
     name: 'Sova Sepolia Testnet'
   },
   'sepolia': {
     SPBTC_ADDRESS: '0x5Db496debB227455cE9f482f9E443f1073a55456',
-    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (CORRECT ADDRESS)
+    CONDUIT_ADDRESS: '0x3b5b1c8d1acf8e253c06b7a6e77d1cade71d6b3f', // Conduit vault (for deposit calls)
+    MODULE_ADDRESS: '0x4aB31F7ad938188E3F2e9c106697a52B13650906', // Module contract (for approvals)
     name: 'Ethereum Sepolia Testnet'
   }
 };
@@ -182,6 +185,7 @@ function getVaultConfig() {
     return {
       SPBTC_ADDRESS: process.env.SPBTC_CONTRACT,
       CONDUIT_ADDRESS: process.env.CONDUIT_CONTRACT,
+      MODULE_ADDRESS: process.env.MODULE_CONTRACT || process.env.CONDUIT_CONTRACT, // Fallback to CONDUIT if not specified
       name: process.env.VAULT_NETWORK || 'Custom Network',
       configured: true
     };
@@ -221,13 +225,15 @@ function getVaultConfig() {
 const config = getVaultConfig();
 const SPBTC_ADDRESS = config.SPBTC_ADDRESS;
 const CONDUIT_ADDRESS = config.CONDUIT_ADDRESS;
+const MODULE_ADDRESS = config.MODULE_ADDRESS;
 const VAULT_CONFIGURED = config.configured;
 
 if (VAULT_CONFIGURED) {
   logger.info('Vault network configuration loaded', {
     network: config.name,
     spBTC: SPBTC_ADDRESS,
-    conduit: CONDUIT_ADDRESS
+    conduit: CONDUIT_ADDRESS,
+    module: MODULE_ADDRESS
   });
 }
 
@@ -348,22 +354,26 @@ class VaultService {
         throw new Error(`Deposit amount exceeds maximum allowed: ${maxDeposit}`);
       }
 
-      // Check current allowance
+      // Check current allowance for MODULE_ADDRESS (not CONDUIT_ADDRESS!)
       const currentAllowance = await this.spBTCContract.methods
-        .allowance(account.address, CONDUIT_ADDRESS)
+        .allowance(account.address, MODULE_ADDRESS)
         .call();
 
-      // Approve if needed
+      // Approve if needed - approve MODULE_ADDRESS, not CONDUIT_ADDRESS
       if (BigInt(currentAllowance) < BigInt(amount)) {
-        logger.info('Approving spBTC for vault', { amount: amount.toString() });
+        logger.info('Approving spBTC for vault module', { 
+          amount: amount.toString(),
+          moduleAddress: MODULE_ADDRESS 
+        });
 
         const approvalTx = await this.spBTCContract.methods
-          .approve(CONDUIT_ADDRESS, amount.toString())
+          .approve(MODULE_ADDRESS, amount.toString())
           .send({ from: account.address });
 
-        logger.info('Approved spBTC for vault', { 
+        logger.info('Approved spBTC for vault module', { 
           amount: amount.toString(), 
-          tx: approvalTx.transactionHash 
+          tx: approvalTx.transactionHash,
+          moduleAddress: MODULE_ADDRESS
         });
       }
 
