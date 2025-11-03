@@ -68,14 +68,29 @@ function registerAdminCommands(bot, web3Service, authMiddleware) {
         logger.warn('Cannot get sovaBTC balance', { error: e.message });
       }
 
+      // Get Sepolia balance via bridge service
+      let sepoliaBalance = 'N/A';
+      try {
+        const bridgeService = require('../services/bridgeService');
+        sepoliaBalance = await bridgeService.getSepoliaBalance(account.address);
+      } catch (e) {
+        logger.warn('Cannot get Sepolia balance', { error: e.message });
+      }
+
       const balanceMsg = `
 💰 *Balance Info*
 
+*Sova Testnet:*
 ETH: \`${ethBalance}\` ETH
 sovaBTC: \`${sovaBTCBalance}\` sovaBTC
+
+*Ethereum Sepolia:*
+ETH: \`${sepoliaBalance}\` ETH
+
 Address: \`${account.address}\`
 
-🔗 [View on Explorer](https://explorer.testnet.sova.io/address/${account.address})
+🔗 [View on Sova Explorer](https://explorer.testnet.sova.io/address/${account.address})
+🔗 [View on Sepolia Explorer](https://sepolia.etherscan.io/address/${account.address})
       `;
 
       bot.sendMessage(chatId, balanceMsg, {
