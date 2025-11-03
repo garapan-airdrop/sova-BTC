@@ -1,30 +1,20 @@
-# Environment variables
+# Environment variables (JANGAN DI-PUSH!)
 .env
+.env.local
+.env.production
 
-# Sensitive files - NEVER commit these
-wallet.json
-claims.json
-minted_wallets.json
-
-# Backups - encrypted but still sensitive
-backups/
-
-# Node modules
+# Dependencies
 node_modules/
 
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-error.log*
 
-# Backup files
-*.backup
+# Replit files
+.replit
+replit.nix
+replit.md
 
 # OS files
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
