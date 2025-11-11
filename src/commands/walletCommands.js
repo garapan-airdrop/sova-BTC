@@ -189,7 +189,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 
       let processedCount = 0;
       let lastUpdateCount = 0;
-      let currentNonce = await web3.eth.getTransactionCount(account.address, 'pending');
+      let currentNonce = Number(await web3.eth.getTransactionCount(account.address, 'pending'));
 
       for (let i = 0; i < walletAccounts.length; i += FUNDWALLET_BATCH_SIZE) {
         const batch = walletAccounts.slice(i, i + FUNDWALLET_BATCH_SIZE);
@@ -200,9 +200,9 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
             from: account.address,
             to: walletAccount.address,
             value: fundAmount.toString(),
-            gas: STANDARD_GAS_LIMIT.toString(),
+            gas: STANDARD_GAS_LIMIT,
             gasPrice: gasPrice.toString(),
-            nonce: (batchStartNonce + batchIndex).toString()
+            nonce: batchStartNonce + batchIndex
           }).then(tx => ({ 
             success: true, 
             address: walletAccount.address, 
