@@ -44,7 +44,8 @@ const {
   CREATOR_REWARD_PERCENTAGE_GAS,
   DEFAULT_DECIMALS,
   MAX_CONCURRENT_OPERATIONS,
-  TELEGRAM_UPDATE_INTERVAL
+  TELEGRAM_UPDATE_INTERVAL,
+  FUNDWALLET_BATCH_SIZE
 } = require('../config/constants');
 
 function registerWalletCommands(bot, web3Service, authMiddleware) {
@@ -103,7 +104,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
     }
   });
 
-  bot.onText(/\/fundwallets/, async (msg) => {
+  bot.onText(/\/fundwallets(?:\s+(\d+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
@@ -112,7 +113,8 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       return;
     }
 
-    logger.info('Fund wallets command', { userId });
+    const countParam = match[1] ? parseInt(match[1]) : null;
+    logger.info('Fund wallets command', { userId, count: countParam });
 
     try {
       const walletData = await loadWallets();
@@ -122,35 +124,44 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
         return;
       }
 
+      const walletsToFund = countParam 
+        ? Math.min(countParam, walletData.wallets.length)
+        : walletData.wallets.length;
+
       const statusMsg = await bot.sendMessage(chatId, 
-        `⏳ Funding ${walletData.wallets.length} wallets...\n\nChecking main wallet balance...`
+        `⏳ Funding ${walletsToFund} wallets...\n\nChecking main wallet balance...`
       );
 
       const mainBalance = await web3.eth.getBalance(account.address);
       const fundAmount = web3.utils.toWei(WALLET_FUND_AMOUNT, 'ether');
       const gasPrice = await web3.eth.getGasPrice();
       const estimatedGasPerTx = BigInt(STANDARD_GAS_LIMIT) * BigInt(gasPrice);
-      const totalValueTransfer = BigInt(fundAmount) * BigInt(walletData.wallets.length);
-      const totalGasCost = estimatedGasPerTx * BigInt(walletData.wallets.length);
+      const totalValueTransfer = BigInt(fundAmount) * BigInt(walletsToFund);
+      const totalGasCost = estimatedGasPerTx * BigInt(walletsToFund);
       const totalNeeded = totalValueTransfer + totalGasCost;
 
       if (BigInt(mainBalance) < totalNeeded) {
+        const costPerWallet = BigInt(fundAmount) + estimatedGasPerTx;
+        const maxWallets = Math.floor(Number(BigInt(mainBalance) / costPerWallet));
+        
         const totalValueETH = web3.utils.fromWei(totalValueTransfer.toString(), 'ether');
         const totalGasETH = web3.utils.fromWei(totalGasCost.toString(), 'ether');
         const totalNeededETH = web3.utils.fromWei(totalNeeded.toString(), 'ether');
         const balanceETH = web3.utils.fromWei(mainBalance, 'ether');
         
+        const suggestionMsg = maxWallets > 0 
+          ? `\n\n✅ *Solusi:* Anda bisa fund *${maxWallets} wallets* dengan balance sekarang.\n💡 Gunakan: \`/fundwallets ${maxWallets}\``
+          : `\n\n❌ Balance terlalu rendah! Top up minimal ${web3.utils.fromWei(costPerWallet.toString(), 'ether')} ETH.`;
+        
         bot.editMessageText(
           `❌ *Balance Tidak Cukup!*
 
-💰 *Transfer:* ${totalValueETH} ETH (${walletData.wallets.length} × ${WALLET_FUND_AMOUNT})
+💰 *Transfer:* ${totalValueETH} ETH (${walletsToFund} × ${WALLET_FUND_AMOUNT})
 ⛽ *Gas Fee:* ~${totalGasETH} ETH
 ━━━━━━━━━━━━━━━━
 📊 *Total Needed:* ${totalNeededETH} ETH
 💼 *Your Balance:* ${balanceETH} ETH
-❌ *Kurang:* ${web3.utils.fromWei((totalNeeded - BigInt(mainBalance)).toString(), 'ether')} ETH
-
-💡 Tip: Reduce jumlah wallets atau top up balance dulu.
+❌ *Kurang:* ${web3.utils.fromWei((totalNeeded - BigInt(mainBalance)).toString(), 'ether')} ETH${suggestionMsg}
           `,
           {
             chat_id: chatId,
@@ -167,11 +178,12 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       
       logger.disableConsole();
       
-      terminal.printSection(`💰 FUNDING ${walletData.wallets.length} WALLETS`);
+      terminal.printSection(`💰 FUNDING ${walletsToFund} WALLETS`);
       const spinner = terminal.createSpinner('Initializing wallet funding...');
       spinner.start();
 
-      const walletAccounts = walletData.wallets.map(w => 
+      const walletsToProcess = walletData.wallets.slice(0, walletsToFund);
+      const walletAccounts = walletsToProcess.map(w => 
         web3.eth.accounts.privateKeyToAccount(w.privateKey)
       );
 
@@ -179,37 +191,54 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       let lastUpdateCount = 0;
       let currentNonce = await web3.eth.getTransactionCount(account.address, 'pending');
 
-      for (const walletAccount of walletAccounts) {
-        try {
-          const tx = await web3.eth.sendTransaction({
+      for (let i = 0; i < walletAccounts.length; i += FUNDWALLET_BATCH_SIZE) {
+        const batch = walletAccounts.slice(i, i + FUNDWALLET_BATCH_SIZE);
+        const batchStartNonce = currentNonce;
+        
+        const batchPromises = batch.map((walletAccount, batchIndex) => 
+          web3.eth.sendTransaction({
             from: account.address,
             to: walletAccount.address,
             value: fundAmount,
             gas: STANDARD_GAS_LIMIT,
             gasPrice: gasPrice.toString(),
-            nonce: currentNonce++
-          });
+            nonce: batchStartNonce + batchIndex
+          }).then(tx => ({ 
+            success: true, 
+            address: walletAccount.address, 
+            txHash: tx.transactionHash 
+          })).catch(error => ({ 
+            success: false, 
+            address: walletAccount.address, 
+            error: error.message 
+          }))
+        );
 
-          spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
-          spinner.start();
-          successCount++;
-        } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
-          spinner.start();
-          failCount++;
-        } finally {
+        const results = await Promise.all(batchPromises);
+        
+        for (const result of results) {
           processedCount++;
+          currentNonce++;
           
-          if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
-            terminal.printProgressBar(processedCount, walletData.wallets.length, `💸 Funding Progress`);
-            
-            bot.editMessageText(
-              `💰 Funding Wallets: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
-              { chat_id: chatId, message_id: statusMsg.message_id }
-            ).catch(() => {});
-            
-            lastUpdateCount = processedCount;
+          if (result.success) {
+            spinner.succeed(terminal.colors.success(`✓ ${processedCount}/${walletsToFund} ${formatAddress(result.address)}`));
+            successCount++;
+          } else {
+            spinner.fail(terminal.colors.error(`✗ ${processedCount}/${walletsToFund} ${formatAddress(result.address)}`));
+            failCount++;
           }
+          spinner.start();
+        }
+
+        if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletsToFund) {
+          terminal.printProgressBar(processedCount, walletsToFund, `💸 Funding Progress`);
+          
+          bot.editMessageText(
+            `💰 Funding Wallets: ${processedCount}/${walletsToFund}\n\n✅ ${successCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletsToFund)}`,
+            { chat_id: chatId, message_id: statusMsg.message_id }
+          ).catch(() => {});
+          
+          lastUpdateCount = processedCount;
         }
       }
 

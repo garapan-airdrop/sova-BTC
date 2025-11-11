@@ -1,0 +1,221 @@
+{
+  "wallets": [
+    {
+      "address": "0xb75667Ba5790236020441FDACB9260550c1462Ef",
+      "privateKey": "41f113c4983d142454394e6993e9e0f1:7ae22c3f11a4755ae85b0e676f89d7ff:eca63cefab62d8f9543e5fdf6a1f1c23be4190a989bd593f61c64e5be8ef20eda5eaad5d88eb7f94528da5c05ec0c21b2432636bf67e2b9e589b4e4e833fc86f91a8",
+      "createdAt": "2025-11-11T07:28:46.303Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x7653717fB90601C8079633eB0229c476E31d1f34",
+      "privateKey": "6a4e96c3f46c09b6e14be61a41cce889:1c2060e67b32e6c27ae7dd9c9e620ba4:b75f57f2faead749ec1936bf0b62ae8afcae69ef1fce09974fbde3d6543cb9b4af3078fe72905627c1d03a8bdac75c19b71a3cdf4ff1ce3e2a0f993c1fe36a62693d",
+      "createdAt": "2025-11-11T07:28:46.304Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x364907cc51D7a0a9213834477876e83F4484BdB0",
+      "privateKey": "44dea9b1a5a88c98796845bc3fccf1a1:3376b17d0198ed8b28269e4ced068758:482f5efecfea982631c39b0b8277bd87b0e1f0aad68293e1c401d00b6954e33eb35fd1aebbe973c40e3bc9ec213d54f65de8082ecdb44fe4a6e7e968d55de447c21a",
+      "createdAt": "2025-11-11T07:28:46.305Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x0fe8DFD780E91aF13b4E725B2Bc4158D39cb3552",
+      "privateKey": "4b58eb2cb62b4fcc7a904c4845e8e49c:dc5ecebd64d31c4253d3e3e086d86568:d31e5d14055cf0c00de79182aaf1b20a343c2fd3ca6a9b84794d5b74b0c5e1010ea8f828ce02cd20cb04ac398ae5e87c7f72bf12a853d69843cf4d08aebd6d132fc6",
+      "createdAt": "2025-11-11T07:28:46.306Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x488E12ed65c6622f4DeB080B18F3bF03E6F238fA",
+      "privateKey": "487456473312cc29db4b3e5009226ba7:303c1b6a1a3c96afaee9a2645badb1af:b3dd0a97a1864c79c0d66b3fec44a2fb2c87fe2f745dce7b4616a57061fbfa0de4ac4ea0e19eac5fd2ec659c50a892962c274c5580c3ead35520f4ec58571f8e017c",
+      "createdAt": "2025-11-11T07:28:46.307Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x25B577cBc4734DfB31e937e24ECdc18a07135985",
+      "privateKey": "0ee2c3f72a0db0d5afa0a833689e01d0:e6ea8819a16641be72f3d8593dd9bf9c:486e4fe2e354674142f3d88bc606b48623b10297669925827adee3966ac82ba581f3d39589984983db4db69616fae51255fb9e4d136975887d4272cd3f66bc995b06",
+      "createdAt": "2025-11-11T08:53:40.690Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x3C771040DF074F1A16dcCE6782591eB054837AAF",
+      "privateKey": "3c6acda4331cff258c4249d7ff4d0250:010c9adccaf1f792be26dc665b54d43b:2d7555690351a643e20b323cb809e7d2b43b1eff6c6fa04b27ed7325ac6c9222fa37d44a4427d366728b39474a6ea13c377a6651e819219ef4634d9b148dbb36e9b3",
+      "createdAt": "2025-11-11T08:53:40.690Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xE841FD243CD3A952305D0d858E90Cf5cA762257c",
+      "privateKey": "97d68699a6962a2ca408db2b88cc69a4:989307ab2ef08831a034a4ac0002fb73:7208413087fd5d555c4ab0c4aed03bc3c68f60e211c139f9e7dc1416c7917f25b3d0c8255739040c60bf7cf74010bc8b34c3df7270c416e08cdcf43dd910585581eb",
+      "createdAt": "2025-11-11T08:53:40.691Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x0fDe44AeEf929F01E430062e114cB572894fDC6e",
+      "privateKey": "063b00360b1d2f695109bbf1b07ef90a:3d7f2cb8e4e1ccdfec0d7a7fbc716c0a:d5efd5bc77108b157bd669e5c2c7abf32537de3b455449c72793c0c229c433041af9ee996e7150fb02b1ea2285f63793da93b8cb1574192b5463b277bdab5282a159",
+      "createdAt": "2025-11-11T08:53:40.692Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xFfF559De1e64827b3C9cC0B64952200cE4C99276",
+      "privateKey": "e93e64cc232d755b5a4885ee4f4bba0b:d30ed7a66acfa4afb1a4440baded9945:ff19a43d9c0c2e2d889cf1972d0999c9afec68c0701550f2adfef23673af0fa71e13f711a54c885e91e4a844afc5a4018b7c5b0fa1d96d802c29ce0352278df4ef9b",
+      "createdAt": "2025-11-11T08:53:40.692Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xA7755D9b94Fa7669bBeACF2584E05579778A65f0",
+      "privateKey": "e903e02ff53b0b7b187849cbcfaf66f7:198e84186699dceee1f20e498256df30:58d879118e9b2ebf8a87960bb66bfd9933355ef7728bf13245ebb7c21e3dec7532e99554a307a5e9499e8bd076c4e479378b4861adce589cda7296ce3191e52c13d1",
+      "createdAt": "2025-11-11T08:53:40.693Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x8466568CaE729bdd78450C15366450Dc18c8aEF9",
+      "privateKey": "d7d4d1262d46fab6019ba8c93d10bf2b:50d70dd93056d315524b370614065a31:47585432973b22417efaecf5932e951f24c64ee264a42e950d51005631c258d2604b8fbdf539be0981de924957abe868411f1d941a3bb566d28ddc0f6836e5b89b34",
+      "createdAt": "2025-11-11T08:53:40.694Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xC03769079f2Bd2f1dd027f8e0dE14aE0Cd103627",
+      "privateKey": "4d9c426898ccb6d32e96cfcfa904984a:695c5e6bd95412c22552b1d901c14f2c:f72608d082da147ca053f831a1cab8ea0f8c402b8e66aa92f3ed92711a482d8b38ccd5548e6b319facefcc392db5d6b3811cb29cde82962ee4a9161a27c7d187e7b1",
+      "createdAt": "2025-11-11T08:53:40.695Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xa38138fE47831BBEB52C2e65eF5F08F7A0A5aAAF",
+      "privateKey": "3df2102008dd192ad87a91be0b777d89:d68540a141a16f5c84650ab05f0bd4f8:d3dc95c94396dca3351e919491d3546ab1ed6bbf2fb10d51de09df1126b11bd2839cee187dac38dff91a1c97b1084b1bce55acbdc23ab8fafe4023fc52afd19fa330",
+      "createdAt": "2025-11-11T08:53:40.695Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xd7517C086894642b2E750c5AEcA8Fb76629E1970",
+      "privateKey": "f18688890ab8c260899702b9fcdee88f:208a5326c85b91ee18cc76adf35dcb73:b69a978841e7f4b0457690d2b54f0957eb87a4cc3d0174ed3cc4c7c34a9f0af645e0b2621284a56d3692a6c55456b2f977be6ce2af36f6556e2c00aa74781c37632d",
+      "createdAt": "2025-11-11T08:53:40.696Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x34e7B18671eDBF634aAEeF48971dEE8868B11382",
+      "privateKey": "724b2f195104a2427487282444e77885:2510926efc857484990ea3142f86f4ba:5d86507eb33c5b1cc584ac302ad73a8f2fe39019ffd7a60c8c0d2fe463e8cc4816cbf6ad7230af5cf51a2aac4e96c1acaca7d4da9d54b423c56951e6bdaea5d18088",
+      "createdAt": "2025-11-11T08:53:40.696Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xD2B511783b2D974953742E778915cf1beb1C316c",
+      "privateKey": "0984e290e61c9d96de48e1dd186fa94a:e9f82a01d1564badb233a2f328ff9e07:233556ec0670b8fa76835c04754389803fbb87824465d9c0329a2493abc0f5a5beeccce7e3f6407bd62ad23057696d0204ebeaca8e1ac1c8a6287e0ed7e8b93365e9",
+      "createdAt": "2025-11-11T08:53:40.697Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xd798D39f825928d83e55aE9f2E4bC75131cbbCc5",
+      "privateKey": "7e0ed2f07f214062baac19dea3888470:4afe0371ac4d523833f96bcd5e21537d:ed5cf98230d7839b63b94fc27a1f893b4d2e236c2246bd7eed2c886db7830db5d3cd67a52a708ad4053fc052204b1dc717ec2b523f8b7231d4f5d4092361014469db",
+      "createdAt": "2025-11-11T08:53:40.701Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x863682826639966ff5c7872ba9138f209E89E27C",
+      "privateKey": "d7eec68c61cfc87dba32858f85498fb9:017896f7578d8aaaea8a64a24abf9f9d:2fc8a1f2f7076405d2f407d6c7f8ac2828152e2690def35207311fe8bf44b61e76d2516d06e4a2c113dc2a4b33d7e0edca2157f845968416700a0b3985ba1e0d396a",
+      "createdAt": "2025-11-11T08:53:40.704Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x8421cAEFe220C2d83d6EAa873058aA0CfD5f2a31",
+      "privateKey": "62e88a7c3b2211c170b835f72e5ac6db:c5366a5cc6345e39973578f1764eb7d8:20ebaab67b7dea8febfb29b9b1e1a8a27af5e12cbda952dc3d667e85c32cc6a7f026537b371e593b9ededaa01d5993a1e55ed3db1bf496d82d4db48c0560b25312a4",
+      "createdAt": "2025-11-11T08:53:40.705Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x6F1BD90B6ecFd435A804e0737d76D36FADf4eFD7",
+      "privateKey": "b13b140f8bc7d69153087ee2f913db08:468c4b62ff3f5d779d8b2341d985a211:efdfebadaeae2e2912612f77c317badd7409ca73d29ff8c930dbb4181b0841f8b2e7f542f212b8504063cecc9c50ec46ea49b9b9f36919b084cd7b530d9bc8903d4c",
+      "createdAt": "2025-11-11T08:53:40.706Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x37E8186C0bB92683Be41f0719c8e729804D2248b",
+      "privateKey": "fd5a853024388cf4992d96790c957b33:0f1f6c4fc99f1c63aa76957dd968366c:11be56bc7428c69b1bed8257bc980f21244527515da372b720dd7559964d4e1ec5c602a846b82bdc2a6cf378386cfbc28dab99c65dacd6253c890fe83ad5963ce96e",
+      "createdAt": "2025-11-11T08:53:40.706Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xECB503Ff13b229b3AA0399D7Dc8D2cC9103aB5E8",
+      "privateKey": "d5950f2496180ca85b23d8634ec68a61:fb3d8d7163cb93bb224d240980a740b7:1dafec48bcb0698afa1e1cb3530be6ea89dca4c5163bc5c999a6db5ad012e8c71d00b17a318fe1eacfda56e996d794d24a2d109b1a4a23d9a03fb92e3a111d38ef52",
+      "createdAt": "2025-11-11T08:53:40.707Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0x37139aE2A90053920E07b5Eb3689C110327C4457",
+      "privateKey": "4b3b516de36cb3849fd0d252b1037153:c7adc7e46afd1927c598c2551307e41c:f54b046ba4e3d07a9fe56d5ede810a18e94f6547cb10fa615b85e46685ff00f3d0eb789fc5b58434efbc6120264a5bbb536d20229ba3e39204fe2b4128f43d2cd17d",
+      "createdAt": "2025-11-11T08:53:40.708Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xD532f5a7823Ac8D995f82e13CEb96F8035392786",
+      "privateKey": "e030ab4612ed6102945733caade6d2ec:54d08328e0a468e04835f576f344d380:3906ee200c4ba73778382115f404e76893117d81bd527c02aaed123ea72cb5aef3cd33675b24335dca0da5b81cc6b44094cbde0e8014e8365b09a79e7058d8701295",
+      "createdAt": "2025-11-11T08:53:40.709Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xEa01f53C148e260812860A94231998A1AA30aDC9",
+      "privateKey": "abde4d13a2a9daa942533d6954a23b11:22223a5554cdfdefad8d0df3a8f00eb5:fa97e0e324999660849d62e0aab6172e4743a7b9aa8de9fb5e3d40d2bffbfad663d110011856374486c96de787d9e99ac27b67e18b81fb0189dfa9631c7f04816662",
+      "createdAt": "2025-11-11T08:53:40.714Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xcfAac226ebFFef279b78cE33ffe3f37fA8fB1E1E",
+      "privateKey": "b2cd96e33bc598d8087848b34b89c7e4:a251ceea58f2fa31b02a3095270c18e7:e0cb619ac05e8451ed0108babeb4a55b71db4202366486ac65dddd1e0bd6dabcfef2c3a22df9743d37ddf8826f3a416aac7975329b21d0959d808bbf8e58769380f9",
+      "createdAt": "2025-11-11T08:53:40.715Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xFC00ffD04195E9F93E15CF37f36037687E9BE7CF",
+      "privateKey": "ab72cf4934ff46f9c9fee79c9634f9be:c20e92b1a9e27357f19b0afcbe52058e:df55bcae85d20043de03410f213c66a739fadb9ee2981603238a014ff6b1605e86223c3aa3fe1bdb8422bab47c5826fbb6bf24020e7adf567975ba7f85a0d0c6d7a4",
+      "createdAt": "2025-11-11T08:53:40.716Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xa985FBddDa0c187Ff5a629547bA8749b3f6F5Eb3",
+      "privateKey": "875d5687edb6a3c2c94e90d0d45213ce:3f939867f169c7c6a9b86151f08584cb:624993b40e6f0e3d31eb54fe9b26f4aac3fbf57ca672b0fcdef1143bf05bcbe5a1d4b66e072c37eb6746755100c72d289211e51bb2c6e8f114b368218ef5d17612fa",
+      "createdAt": "2025-11-11T08:53:40.716Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xcd805B1E2fF4e88994B3c3899d5FA795daB2e7f0",
+      "privateKey": "762b0372faab980c60393fa468b6a68f:6abb4f182a300516168e9311f932ee8b:f189f2fd4cf75efa1a859905fe1db49646523d59c949e0df5bef707ce266d1a007093445160f7aff4c94ec603a8d21555ffb0a4e27cfa9530ef30048c044ce3951b3",
+      "createdAt": "2025-11-11T08:53:40.720Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    },
+    {
+      "address": "0xaEF600993DbcB9A8EB6A9758521DB0403d46223C",
+      "privateKey": "ed336f1fc0f7e1cecd361d48fc70d595:5db40343e363ab3f55fd1b4ccbdc4686:588d83aa690ea5e6af492b14da9c37d00abb09d3547c9254667b320d5a3678dd8b0fccedb46c1a8fffd28b5038a4882ec5eec3d758069cda7d9578b929effedcfbde",
+      "createdAt": "2025-11-11T08:53:40.721Z",
+      "hasMinted": false,
+      "lastMintTx": null
+    }
+  ]
+}
