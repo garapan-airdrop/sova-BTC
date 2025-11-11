@@ -222,12 +222,13 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 
           if (result.success) {
             spinner.succeed(terminal.colors.success(`✓ ${processedCount}/${walletsToFund} ${formatAddress(result.address)}`));
+            spinner.start();
             successCount++;
           } else {
             spinner.fail(terminal.colors.error(`✗ ${processedCount}/${walletsToFund} ${formatAddress(result.address)}`));
+            spinner.start();
             failCount++;
           }
-          spinner.start();
         }
 
         if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletsToFund) {
@@ -672,6 +673,11 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
           } catch (e) {
             spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
             spinner.start();
+            logger.error('Gas collection failed for wallet', { 
+              address: wallet.address, 
+              error: e.message,
+              stack: e.stack 
+            });
             failCount++;
           } finally {
             if (tempWalletAddress) {
