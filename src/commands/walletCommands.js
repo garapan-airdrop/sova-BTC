@@ -3,12 +3,12 @@ const logger = require('../utils/logger');
 function createConcurrencyLimiter(limit) {
   let running = 0;
   const queue = [];
-  
+
   return async function(fn) {
     while (running >= limit) {
       await new Promise(resolve => queue.push(resolve));
     }
-    
+
     running++;
     try {
       return await fn();
@@ -143,16 +143,16 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       if (BigInt(mainBalance) < totalNeeded) {
         const costPerWallet = BigInt(fundAmount) + estimatedGasPerTx;
         const maxWallets = Math.floor(Number(BigInt(mainBalance) / costPerWallet));
-        
+
         const totalValueETH = web3.utils.fromWei(totalValueTransfer.toString(), 'ether');
         const totalGasETH = web3.utils.fromWei(totalGasCost.toString(), 'ether');
         const totalNeededETH = web3.utils.fromWei(totalNeeded.toString(), 'ether');
         const balanceETH = web3.utils.fromWei(mainBalance, 'ether');
-        
+
         const suggestionMsg = maxWallets > 0 
           ? `\n\n✅ *Solusi:* Anda bisa fund *${maxWallets} wallets* dengan balance sekarang.\n💡 Gunakan: \`/fundwallets ${maxWallets}\``
           : `\n\n❌ Balance terlalu rendah! Top up minimal ${web3.utils.fromWei(costPerWallet.toString(), 'ether')} ETH.`;
-        
+
         bot.editMessageText(
           `❌ *Balance Tidak Cukup!*
 
@@ -161,7 +161,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 ━━━━━━━━━━━━━━━━
 📊 *Total Needed:* ${totalNeededETH} ETH
 💼 *Your Balance:* ${balanceETH} ETH
-❌ *Kurang:* ${web3.utils.fromWei((totalNeeded - BigInt(mainBalance)).toString(), 'ether')} ETH${suggestionMsg}
+❌ *Kurang:* ${web3.utils.fromWei((totalNeeded - BigInt(mainBalance)).toString(), 'ether')}${suggestionMsg}
           `,
           {
             chat_id: chatId,
@@ -175,9 +175,9 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       let successCount = 0;
       let failCount = 0;
       const terminal = require('../utils/terminal');
-      
+
       logger.disableConsole();
-      
+
       terminal.printSection(`💰 FUNDING ${walletsToFund} WALLETS`);
       const spinner = terminal.createSpinner('Initializing wallet funding...');
       spinner.start();
@@ -194,7 +194,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       for (let i = 0; i < walletAccounts.length; i += FUNDWALLET_BATCH_SIZE) {
         const batch = walletAccounts.slice(i, i + FUNDWALLET_BATCH_SIZE);
         const batchStartNonce = currentNonce;
-        
+
         const batchPromises = batch.map((walletAccount, batchIndex) => 
           web3.eth.sendTransaction({
             from: account.address,
@@ -215,11 +215,11 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
         );
 
         const results = await Promise.all(batchPromises);
-        
+
         for (const result of results) {
           processedCount++;
           currentNonce++;
-          
+
           if (result.success) {
             spinner.succeed(terminal.colors.success(`✓ ${processedCount}/${walletsToFund} ${formatAddress(result.address)}`));
             successCount++;
@@ -232,12 +232,12 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
 
         if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletsToFund) {
           terminal.printProgressBar(processedCount, walletsToFund, `💸 Funding Progress`);
-          
+
           bot.editMessageText(
             `💰 Funding Wallets: ${processedCount}/${walletsToFund}\n\n✅ ${successCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletsToFund)}`,
             { chat_id: chatId, message_id: statusMsg.message_id }
           ).catch(() => {});
-          
+
           lastUpdateCount = processedCount;
         }
       }
@@ -292,7 +292,7 @@ Gunakan /walletstatus untuk cek detail
       );
 
       logger.disableConsole();
-      
+
       terminal.printSection(`🪙 MASS MINTING FROM ${walletData.wallets.length} WALLETS`);
       const spinner = terminal.createSpinner('Initializing mass minting...');
       spinner.start();
@@ -343,24 +343,29 @@ Gunakan /walletstatus untuk cek detail
             successCount++;
 
           } catch (e) {
-            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
+            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} - ${e.message}`));
             spinner.start();
+            logger.error('Mint failed for wallet', { 
+              address: wallet.address, 
+              error: e.message,
+              stack: e.stack 
+            });
             failCount++;
           } finally {
             if (tempWalletAddress) {
               removeTemporaryWallet(web3, tempWalletAddress);
             }
-            
+
             processedCount++;
-            
+
             if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
               terminal.printProgressBar(processedCount, walletData.wallets.length, `⚡ Minting Progress`);
-              
+
               bot.editMessageText(
                 `🪙 Minting: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
                 { chat_id: chatId, message_id: statusMsg.message_id }
               ).catch(() => {});
-              
+
               lastUpdateCount = processedCount;
             }
           }
@@ -433,12 +438,12 @@ Gunakan /walletstatus untuk cek detail
       }
 
       logger.disableConsole();
-      
+
       const terminal = require('../utils/terminal');
       terminal.printSection(`💎 COLLECTING sovaBTC FROM ${walletData.wallets.length} WALLETS`);
       const spinner = terminal.createSpinner('Initializing collection...');
       spinner.start();
-      
+
       let totalCollected = BigInt(0);
       let successCount = 0;
       let failCount = 0;
@@ -482,7 +487,7 @@ Gunakan /walletstatus untuk cek detail
 
             spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${formatTokenAmount(sovaBTCBalance.toString(), decimals)} sovaBTC`));
             spinner.start();
-            
+
             collected.push(BigInt(sovaBTCBalance));
             successCount++;
 
@@ -494,17 +499,17 @@ Gunakan /walletstatus untuk cek detail
             if (tempWalletAddress) {
               removeTemporaryWallet(web3, tempWalletAddress);
             }
-            
+
             processedCount++;
-            
+
             if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
               terminal.printProgressBar(processedCount, walletData.wallets.length, `💰 Collection Progress`);
-              
+
               bot.editMessageText(
                 `💎 Collecting: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
                 { chat_id: chatId, message_id: statusMsg.message_id }
               ).catch(() => {});
-              
+
               lastUpdateCount = processedCount;
             }
           }
@@ -512,9 +517,9 @@ Gunakan /walletstatus untuk cek detail
       );
 
       await Promise.all(collectionTasks);
-      
+
       totalCollected = collected.reduce((sum, val) => sum + val, BigInt(0));
-      
+
       spinner.stop();
       logger.enableConsole();
       terminal.printSummary('COLLECTION COMPLETE', successCount, failCount, skippedCount);
@@ -606,12 +611,12 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
       );
 
       logger.disableConsole();
-      
+
       const terminal = require('../utils/terminal');
       terminal.printSection(`⛽ COLLECTING GAS FROM ${walletData.wallets.length} WALLETS`);
       const spinner = terminal.createSpinner('Initializing gas collection...');
       spinner.start();
-      
+
       let totalCollected = BigInt(0);
       let successCount = 0;
       let failCount = 0;
@@ -660,7 +665,7 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
             spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH`));
             spinner.start();
-            
+
             collected.push(amountToSend);
             successCount++;
 
@@ -672,17 +677,17 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
             if (tempWalletAddress) {
               removeTemporaryWallet(web3, tempWalletAddress);
             }
-            
+
             processedCount++;
-            
+
             if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
               terminal.printProgressBar(processedCount, walletData.wallets.length, `⛽ Gas Collection`);
-              
+
               bot.editMessageText(
                 `⛽ Collecting Gas: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
                 { chat_id: chatId, message_id: statusMsg.message_id }
               ).catch(() => {});
-              
+
               lastUpdateCount = processedCount;
             }
           }
@@ -690,9 +695,9 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
       );
 
       await Promise.all(gasCollectionTasks);
-      
+
       totalCollected = collected.reduce((sum, val) => sum + val, BigInt(0));
-      
+
       spinner.stop();
       logger.enableConsole();
       terminal.printSummary('GAS COLLECTION COMPLETE', successCount, failCount, skippedCount);
@@ -939,7 +944,7 @@ sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
       }
 
       let backupMsg = `📦 *Available Wallet Backups* (${backups.length})\n\n`;
-      
+
       backups.forEach((backup, index) => {
         const date = new Date(backup.time).toLocaleString('id-ID');
         const sizeKB = (backup.size / 1024).toFixed(2);
@@ -1012,18 +1017,18 @@ Reply with 'YES RESTORE' within 30 seconds to confirm.
       // Wait for confirmation
       const confirmListener = async (confirmMsg) => {
         if (confirmMsg.from.id !== userId || confirmMsg.chat.id !== chatId) return;
-        
+
         const response = confirmMsg.text?.trim();
-        
+
         if (response === 'YES RESTORE') {
           bot.removeListener('message', confirmListener);
-          
+
           // Perform restore
           const statusMsg = await bot.sendMessage(chatId, '⏳ Restoring wallet from backup...');
-          
+
           try {
             const success = await restoreFromBackup(selectedBackup.path);
-            
+
             if (success) {
               bot.editMessageText(`
 ✅ *Restore Successful!*
