@@ -22,3 +22,4 @@ Thumbs.db
 wallet.json
 minted_wallets.json
 claims.json
+backups/
