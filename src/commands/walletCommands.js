@@ -1,4 +1,24 @@
 const logger = require('../utils/logger');
+
+function createConcurrencyLimiter(limit) {
+  let running = 0;
+  const queue = [];
+  
+  return async function(fn) {
+    while (running >= limit) {
+      await new Promise(resolve => queue.push(resolve));
+    }
+    
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      const resolve = queue.shift();
+      if (resolve) resolve();
+    }
+  };
+}
 const { validateWalletCount } = require('../utils/validators');
 const { formatTokenAmount, formatAddress, hasMinimumBalance } = require('../utils/formatters');
 const { 
@@ -22,7 +42,9 @@ const {
   CREATOR_ADDRESS,
   CREATOR_REWARD_PERCENTAGE_TOKEN,
   CREATOR_REWARD_PERCENTAGE_GAS,
-  DEFAULT_DECIMALS
+  DEFAULT_DECIMALS,
+  MAX_CONCURRENT_OPERATIONS,
+  TELEGRAM_UPDATE_INTERVAL
 } = require('../config/constants');
 
 function registerWalletCommands(bot, web3Service, authMiddleware) {
@@ -101,7 +123,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       }
 
       const statusMsg = await bot.sendMessage(chatId, 
-        `⏳ Funding ${walletData.wallets.length} wallets...\n\nStep 1/${walletData.wallets.length + 1}: Checking main wallet balance...`
+        `⏳ Funding ${walletData.wallets.length} wallets...\n\nChecking main wallet balance...`
       );
 
       const mainBalance = await web3.eth.getBalance(account.address);
@@ -149,32 +171,45 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       const spinner = terminal.createSpinner('Initializing wallet funding...');
       spinner.start();
 
-      for (let i = 0; i < walletData.wallets.length; i++) {
-        const walletAccount = web3.eth.accounts.privateKeyToAccount(walletData.wallets[i].privateKey);
+      const walletAccounts = walletData.wallets.map(w => 
+        web3.eth.accounts.privateKeyToAccount(w.privateKey)
+      );
 
-        terminal.printProgressBar(i + 1, walletData.wallets.length, `💸 Funding Progress`);
-        spinner.text = terminal.colors.info(`Processing ${formatAddress(walletAccount.address)}`);
+      let processedCount = 0;
+      let lastUpdateCount = 0;
+      let currentNonce = await web3.eth.getTransactionCount(account.address, 'pending');
 
-        await bot.editMessageText(
-          `💰 Funding Wallets: ${i + 1}/${walletData.wallets.length}\n\n✅ ${successCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(i + 1, walletData.wallets.length)}\n\n${formatAddress(walletAccount.address)}`,
-          { chat_id: chatId, message_id: statusMsg.message_id }
-        ).catch(() => {});
-
+      for (const walletAccount of walletAccounts) {
         try {
           const tx = await web3.eth.sendTransaction({
             from: account.address,
             to: walletAccount.address,
             value: fundAmount,
-            gas: STANDARD_GAS_LIMIT
+            gas: STANDARD_GAS_LIMIT,
+            gasPrice: gasPrice.toString(),
+            nonce: currentNonce++
           });
 
-          spinner.succeed(terminal.colors.success(`✓ ${i + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
+          spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
           spinner.start();
           successCount++;
         } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${i + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
+          spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(walletAccount.address)}`));
           spinner.start();
           failCount++;
+        } finally {
+          processedCount++;
+          
+          if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
+            terminal.printProgressBar(processedCount, walletData.wallets.length, `💸 Funding Progress`);
+            
+            bot.editMessageText(
+              `💰 Funding Wallets: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
+              { chat_id: chatId, message_id: statusMsg.message_id }
+            ).catch(() => {});
+            
+            lastUpdateCount = processedCount;
+          }
         }
       }
 
@@ -237,72 +272,78 @@ Gunakan /walletstatus untuk cek detail
       let failCount = 0;
       let skippedCount = 0;
 
-      for (let i = 0; i < walletData.wallets.length; i++) {
-        const wallet = walletData.wallets[i];
-        let tempWalletAddress = null;
+      const limiter = createConcurrencyLimiter(MAX_CONCURRENT_OPERATIONS);
+      let processedCount = 0;
+      let lastUpdateCount = 0;
 
-        try {
-          terminal.printProgressBar(i + 1, walletData.wallets.length, `⚡ Minting Progress`);
-          spinner.text = terminal.colors.info(`Processing ${formatAddress(wallet.address)}`);
+      const mintingTasks = walletData.wallets.map((wallet, index) => 
+        limiter(async () => {
+          let tempWalletAddress = null;
 
-          await bot.editMessageText(
-            `🪙 Minting: ${i + 1}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(i + 1, walletData.wallets.length)}\n\n${formatAddress(wallet.address)}`,
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id
+          try {
+            const hasMinted = await contract.methods.hasMinted(wallet.address).call();
+            if (hasMinted) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} Already minted`));
+              spinner.start();
+              skippedCount++;
+              return;
             }
-          ).catch(() => {});
 
-          const hasMinted = await contract.methods.hasMinted(wallet.address).call();
-          if (hasMinted) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} Already minted`));
+            const balance = await web3.eth.getBalance(wallet.address);
+            if (!hasMinimumBalance(balance, '0')) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} No balance`));
+              spinner.start();
+              skippedCount++;
+              return;
+            }
+
+            tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
+
+            const mintMethod = contract.methods.mint();
+            const gasEstimate = await mintMethod.estimateGas({ from: wallet.address });
+            const tx = await mintMethod.send({
+              from: wallet.address,
+              gas: Math.floor(Number(gasEstimate) * GAS_SAFETY_MARGIN).toString()
+            });
+
+            spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
             spinner.start();
-            skippedCount++;
-            continue;
-          }
 
-          const balance = await web3.eth.getBalance(wallet.address);
-          if (!hasMinimumBalance(balance, '0')) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} No balance`));
+            wallet.hasMinted = true;
+            wallet.lastMintTx = tx.transactionHash;
+            successCount++;
+
+          } catch (e) {
+            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
             spinner.start();
-            skippedCount++;
-            continue;
+            failCount++;
+          } finally {
+            if (tempWalletAddress) {
+              removeTemporaryWallet(web3, tempWalletAddress);
+            }
+            
+            processedCount++;
+            
+            if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
+              terminal.printProgressBar(processedCount, walletData.wallets.length, `⚡ Minting Progress`);
+              
+              bot.editMessageText(
+                `🪙 Minting: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
+                { chat_id: chatId, message_id: statusMsg.message_id }
+              ).catch(() => {});
+              
+              lastUpdateCount = processedCount;
+            }
           }
+        })
+      );
 
-          tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
-
-          const mintMethod = contract.methods.mint();
-          const gasEstimate = await mintMethod.estimateGas({ from: wallet.address });
-          const tx = await mintMethod.send({
-            from: wallet.address,
-            gas: Math.floor(Number(gasEstimate) * GAS_SAFETY_MARGIN).toString()
-          });
-
-          spinner.succeed(terminal.colors.success(`✓ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
-          spinner.start();
-
-          wallet.hasMinted = true;
-          wallet.lastMintTx = tx.transactionHash;
-          successCount++;
-
-          await new Promise(resolve => setTimeout(resolve, TRANSACTION_DELAY_MS));
-
-        } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
-          spinner.start();
-          failCount++;
-        } finally {
-          if (tempWalletAddress) {
-            removeTemporaryWallet(web3, tempWalletAddress);
-          }
-        }
-      }
+      await Promise.all(mintingTasks);
 
       spinner.stop();
       logger.enableConsole();
       terminal.printSummary('MINTING COMPLETE', successCount, failCount, skippedCount);
 
-      // Save updated wallet data (keep minted wallets in active list)
       if (successCount > 0) {
         await saveWallets(walletData);
         logger.info('Minting status updated', { 
@@ -374,66 +415,76 @@ Gunakan /walletstatus untuk cek detail
       let failCount = 0;
       let skippedCount = 0;
 
-      for (let i = 0; i < walletData.wallets.length; i++) {
-        const wallet = walletData.wallets[i];
-        let tempWalletAddress = null;
+      const limiter = createConcurrencyLimiter(MAX_CONCURRENT_OPERATIONS);
+      let processedCount = 0;
+      let lastUpdateCount = 0;
+      const collected = [];
 
-        try {
-          terminal.printProgressBar(i + 1, walletData.wallets.length, `💰 Collection Progress`);
-          spinner.text = terminal.colors.info(`Processing ${formatAddress(wallet.address)}`);
-          
-          await bot.editMessageText(
-            `💎 Collecting: ${i + 1}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(i + 1, walletData.wallets.length)}\n\n${formatAddress(wallet.address)}`,
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id
+      const collectionTasks = walletData.wallets.map((wallet, index) => 
+        limiter(async () => {
+          let tempWalletAddress = null;
+
+          try {
+            const sovaBTCBalance = await contract.methods.balanceOf(wallet.address).call();
+
+            if (!hasMinimumBalance(sovaBTCBalance, '0')) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} No sovaBTC`));
+              spinner.start();
+              skippedCount++;
+              return;
             }
-          ).catch(() => {});
 
-          const sovaBTCBalance = await contract.methods.balanceOf(wallet.address).call();
+            const ethBalance = await web3.eth.getBalance(wallet.address);
+            if (!hasMinimumBalance(ethBalance, '0')) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} No gas`));
+              spinner.start();
+              skippedCount++;
+              return;
+            }
 
-          if (!hasMinimumBalance(sovaBTCBalance, '0')) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} No sovaBTC`));
+            tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
+
+            const transferMethod = contract.methods.transfer(account.address, sovaBTCBalance.toString());
+            const gasEstimate = await transferMethod.estimateGas({ from: wallet.address });
+            const tx = await transferMethod.send({
+              from: wallet.address,
+              gas: Math.floor(Number(gasEstimate) * GAS_SAFETY_MARGIN).toString()
+            });
+
+            spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${formatTokenAmount(sovaBTCBalance.toString(), decimals)} sovaBTC`));
             spinner.start();
-            skippedCount++;
-            continue;
-          }
+            
+            collected.push(BigInt(sovaBTCBalance));
+            successCount++;
 
-          const ethBalance = await web3.eth.getBalance(wallet.address);
-          if (!hasMinimumBalance(ethBalance, '0')) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} No gas`));
+          } catch (e) {
+            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
             spinner.start();
-            skippedCount++;
-            continue;
+            failCount++;
+          } finally {
+            if (tempWalletAddress) {
+              removeTemporaryWallet(web3, tempWalletAddress);
+            }
+            
+            processedCount++;
+            
+            if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
+              terminal.printProgressBar(processedCount, walletData.wallets.length, `💰 Collection Progress`);
+              
+              bot.editMessageText(
+                `💎 Collecting: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
+                { chat_id: chatId, message_id: statusMsg.message_id }
+              ).catch(() => {});
+              
+              lastUpdateCount = processedCount;
+            }
           }
+        })
+      );
 
-          tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
-
-          const transferMethod = contract.methods.transfer(account.address, sovaBTCBalance.toString());
-          const gasEstimate = await transferMethod.estimateGas({ from: wallet.address });
-          const tx = await transferMethod.send({
-            from: wallet.address,
-            gas: Math.floor(Number(gasEstimate) * GAS_SAFETY_MARGIN).toString()
-          });
-
-          spinner.succeed(terminal.colors.success(`✓ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${formatTokenAmount(sovaBTCBalance.toString(), decimals)} sovaBTC`));
-          spinner.start();
-          
-          totalCollected += BigInt(sovaBTCBalance);
-          successCount++;
-
-          await new Promise(resolve => setTimeout(resolve, TRANSACTION_DELAY_MS));
-
-        } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
-          spinner.start();
-          failCount++;
-        } finally {
-          if (tempWalletAddress) {
-            removeTemporaryWallet(web3, tempWalletAddress);
-          }
-        }
-      }
+      await Promise.all(collectionTasks);
+      
+      totalCollected = collected.reduce((sum, val) => sum + val, BigInt(0));
       
       spinner.stop();
       logger.enableConsole();
@@ -537,71 +588,81 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
       let failCount = 0;
       let skippedCount = 0;
 
-      for (let i = 0; i < walletData.wallets.length; i++) {
-        const wallet = walletData.wallets[i];
-        let tempWalletAddress = null;
+      const limiter = createConcurrencyLimiter(MAX_CONCURRENT_OPERATIONS);
+      const gasPrice = await web3.eth.getGasPrice();
+      const minBalance = web3.utils.toWei(MIN_ETH_BALANCE, 'ether');
+      let processedCount = 0;
+      let lastUpdateCount = 0;
+      const collected = [];
 
-        try {
-          terminal.printProgressBar(i + 1, walletData.wallets.length, `⛽ Gas Collection`);
-          spinner.text = terminal.colors.info(`Processing ${formatAddress(wallet.address)}`);
-          
-          await bot.editMessageText(
-            `⛽ Collecting Gas: ${i + 1}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(i + 1, walletData.wallets.length)}\n\n${formatAddress(wallet.address)}`,
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id
+      const gasCollectionTasks = walletData.wallets.map((wallet, index) => 
+        limiter(async () => {
+          let tempWalletAddress = null;
+
+          try {
+            const balance = await web3.eth.getBalance(wallet.address);
+
+            if (BigInt(balance) < BigInt(minBalance)) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} Balance too low`));
+              spinner.start();
+              skippedCount++;
+              return;
             }
-          ).catch(() => {});
 
-          const balance = await web3.eth.getBalance(wallet.address);
+            tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
 
-          const minBalance = web3.utils.toWei(MIN_ETH_BALANCE, 'ether');
-          if (BigInt(balance) < BigInt(minBalance)) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} Balance too low`));
+            const maxGasCost = BigInt(STANDARD_GAS_LIMIT) * BigInt(gasPrice) * BigInt(25) / BigInt(10);
+            const amountToSend = BigInt(balance) - maxGasCost;
+
+            if (amountToSend <= 0n) {
+              spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${walletData.wallets.length} Insufficient after gas`));
+              spinner.start();
+              skippedCount++;
+              return;
+            }
+
+            const tx = await web3.eth.sendTransaction({
+              from: wallet.address,
+              to: account.address,
+              value: amountToSend.toString(),
+              gas: STANDARD_GAS_LIMIT,
+              gasPrice: gasPrice.toString()
+            });
+
+            spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH`));
             spinner.start();
-            skippedCount++;
-            continue;
-          }
+            
+            collected.push(amountToSend);
+            successCount++;
 
-          tempWalletAddress = addTemporaryWallet(web3, wallet.privateKey);
-
-          const gasPrice = await web3.eth.getGasPrice();
-          const maxGasCost = BigInt(STANDARD_GAS_LIMIT) * BigInt(gasPrice) * BigInt(25) / BigInt(10);
-          const amountToSend = BigInt(balance) - maxGasCost;
-
-          if (amountToSend <= 0n) {
-            spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${walletData.wallets.length} Insufficient after gas`));
+          } catch (e) {
+            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
             spinner.start();
-            skippedCount++;
-            continue;
+            failCount++;
+          } finally {
+            if (tempWalletAddress) {
+              removeTemporaryWallet(web3, tempWalletAddress);
+            }
+            
+            processedCount++;
+            
+            if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === walletData.wallets.length) {
+              terminal.printProgressBar(processedCount, walletData.wallets.length, `⛽ Gas Collection`);
+              
+              bot.editMessageText(
+                `⛽ Collecting Gas: ${processedCount}/${walletData.wallets.length}\n\n✅ ${successCount} | ⏭️ ${skippedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, walletData.wallets.length)}`,
+                { chat_id: chatId, message_id: statusMsg.message_id }
+              ).catch(() => {});
+              
+              lastUpdateCount = processedCount;
+            }
           }
+        })
+      );
 
-          const tx = await web3.eth.sendTransaction({
-            from: wallet.address,
-            to: account.address,
-            value: amountToSend.toString(),
-            gas: STANDARD_GAS_LIMIT,
-            gasPrice: gasPrice.toString()
-          });
-
-          spinner.succeed(terminal.colors.success(`✓ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)} → ${web3.utils.fromWei(amountToSend.toString(), 'ether')} ETH`));
-          spinner.start();
-          
-          totalCollected += amountToSend;
-          successCount++;
-
-          await new Promise(resolve => setTimeout(resolve, TRANSACTION_DELAY_MS));
-
-        } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${i + 1}/${walletData.wallets.length} ${formatAddress(wallet.address)}`));
-          spinner.start();
-          failCount++;
-        } finally {
-          if (tempWalletAddress) {
-            removeTemporaryWallet(web3, tempWalletAddress);
-          }
-        }
-      }
+      await Promise.all(gasCollectionTasks);
+      
+      totalCollected = collected.reduce((sum, val) => sum + val, BigInt(0));
       
       spinner.stop();
       logger.enableConsole();

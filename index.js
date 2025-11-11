@@ -43,11 +43,11 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function animatedStartup() {
   const steps = [
-    { text: 'Loading Web3 module...', delay: 300 },
-    { text: 'Connecting to Sova Testnet...', delay: 500 },
-    { text: 'Initializing smart contract...', delay: 400 },
-    { text: 'Setting up Telegram Bot...', delay: 300 },
-    { text: 'Configuring auth middleware...', delay: 200 }
+    { text: 'Loading Web3 module...', delay: 50 },
+    { text: 'Connecting to Sova Testnet...', delay: 50 },
+    { text: 'Initializing smart contract...', delay: 50 },
+    { text: 'Setting up Telegram Bot...', delay: 50 },
+    { text: 'Configuring auth middleware...', delay: 50 }
   ];
 
   for (const step of steps) {
