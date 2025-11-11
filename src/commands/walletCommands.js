@@ -85,19 +85,78 @@ function registerWalletCommands(bot, web3Service, authMiddleware) {
       const newWallets = await createNewWallets(web3, count);
       const walletData = await loadWallets();
 
-      const responseMsg = `✅ *${count} Wallets Created!*
+      const ITEMS_PER_PAGE = 10;
+      const totalPages = Math.ceil(newWallets.length / ITEMS_PER_PAGE);
 
-Total wallets: ${walletData.wallets.length}
+      // Store wallets data temporarily for pagination
+      const paginationKey = `createwallets_${userId}_${Date.now()}`;
+      global.paginationData = global.paginationData || {};
+      global.paginationData[paginationKey] = {
+        wallets: newWallets,
+        totalWallets: walletData.wallets.length,
+        count: count,
+        timestamp: Date.now()
+      };
 
-*New addresses:*
-${newWallets.slice(0, 5).map((w, i) => `${i + 1}. \`${w.address}\``).join('\n')}
-${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
+      // Clean old pagination data (older than 5 minutes)
+      Object.keys(global.paginationData).forEach(key => {
+        if (Date.now() - global.paginationData[key].timestamp > 300000) {
+          delete global.paginationData[key];
+        }
+      });
 
-⚠️ Data disimpan di wallet.json (encrypted)
+      const sendPage = (page, messageId = null) => {
+        const start = page * ITEMS_PER_PAGE;
+        const end = Math.min(start + ITEMS_PER_PAGE, newWallets.length);
+        const addressList = newWallets.slice(start, end)
+          .map((w, i) => `${start + i + 1}. \`${w.address}\``)
+          .join('\n');
+
+        const responseMsg = `✅ *${count} Wallets Created!*
+
+📊 *Total wallets:* ${walletData.wallets.length}
+
+*Addresses (${start + 1}-${end} of ${newWallets.length}):*
+${addressList}
+
+💾 Data disimpan di wallet.json (encrypted)
 🔐 Jangan share private keys!
-      `;
 
-      bot.sendMessage(chatId, responseMsg, { parse_mode: 'Markdown' });
+Halaman ${page + 1}/${totalPages}
+        `;
+
+        const keyboard = {
+          inline_keyboard: []
+        };
+
+        if (totalPages > 1) {
+          const buttons = [];
+          if (page > 0) {
+            buttons.push({ text: '⬅️ Previous', callback_data: `cwpage_${paginationKey}_${page - 1}` });
+          }
+          if (page < totalPages - 1) {
+            buttons.push({ text: 'Next ➡️', callback_data: `cwpage_${paginationKey}_${page + 1}` });
+          }
+          keyboard.inline_keyboard.push(buttons);
+        }
+
+        const options = { 
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        };
+
+        if (messageId) {
+          bot.editMessageText(responseMsg, {
+            chat_id: chatId,
+            message_id: messageId,
+            ...options
+          }).catch(() => {});
+        } else {
+          bot.sendMessage(chatId, responseMsg, options);
+        }
+      };
+
+      sendPage(0);
     } catch (error) {
       logger.error('Create wallets error', { userId, error: error.message });
       bot.sendMessage(chatId, `❌ Error: ${error.message}`);
