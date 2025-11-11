@@ -133,7 +133,7 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
       );
 
       const mainBalance = await web3.eth.getBalance(account.address);
-      const fundAmount = web3.utils.toWei(WALLET_FUND_AMOUNT, 'ether');
+      const fundAmount = web3.utils.toWei(WALLET_FUND_AMOUNT.toString(), 'ether');
       const gasPrice = await web3.eth.getGasPrice();
       const estimatedGasPerTx = BigInt(STANDARD_GAS_LIMIT) * BigInt(gasPrice);
       const totalValueTransfer = BigInt(fundAmount) * BigInt(walletsToFund);
@@ -199,10 +199,10 @@ ${newWallets.length > 5 ? `\n_...dan ${newWallets.length - 5} lainnya_` : ''}
           web3.eth.sendTransaction({
             from: account.address,
             to: walletAccount.address,
-            value: fundAmount,
-            gas: STANDARD_GAS_LIMIT,
+            value: fundAmount.toString(),
+            gas: STANDARD_GAS_LIMIT.toString(),
             gasPrice: gasPrice.toString(),
-            nonce: batchStartNonce + batchIndex
+            nonce: (batchStartNonce + batchIndex).toString()
           }).then(tx => ({ 
             success: true, 
             address: walletAccount.address, 
