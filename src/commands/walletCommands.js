@@ -851,11 +851,38 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
         return;
       }
 
-      // Find wallets that have minted and have no sovaBTC balance left
       const statusMsg = await bot.sendMessage(chatId, 
-        `⏳ Checking ${walletData.wallets.length} wallets for archiving...`
+        `⏳ Syncing & checking ${walletData.wallets.length} wallets...`
       );
 
+      // Step 1: Sync mint status with smart contract
+      let syncedCount = 0;
+      for (const wallet of walletData.wallets) {
+        try {
+          const contractMintStatus = await contract.methods.hasMinted(wallet.address).call();
+          
+          if (contractMintStatus !== wallet.hasMinted) {
+            wallet.hasMinted = contractMintStatus;
+            syncedCount++;
+            logger.info('Mint status synced', { 
+              address: wallet.address, 
+              oldStatus: !contractMintStatus,
+              newStatus: contractMintStatus 
+            });
+          }
+        } catch (e) {
+          logger.error('Error syncing wallet', { address: wallet.address, error: e.message });
+        }
+      }
+
+      if (syncedCount > 0) {
+        await bot.editMessageText(
+          `⏳ Synced ${syncedCount} wallets\n\nChecking for archiving...`,
+          { chat_id: chatId, message_id: statusMsg.message_id }
+        );
+      }
+
+      // Step 2: Archive completed wallets
       let archivedCount = 0;
       const walletsToKeep = [];
       const skipReasons = {
@@ -883,20 +910,11 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
           } else {
             walletsToKeep.push(wallet);
             
-            // Track why it was kept
             if (BigInt(sovaBTCBalance) > 0n) {
               skipReasons.hasSovaBTC++;
-              logger.info('Wallet kept - has sovaBTC', { 
-                address: wallet.address, 
-                sovaBTC: web3.utils.fromWei(sovaBTCBalance.toString(), 'ether') 
-              });
             }
             if (BigInt(ethBalance) >= BigInt(web3.utils.toWei('0.0001', 'ether'))) {
               skipReasons.hasETH++;
-              logger.info('Wallet kept - has ETH', { 
-                address: wallet.address, 
-                eth: web3.utils.fromWei(ethBalance, 'ether') 
-              });
             }
           }
         } catch (e) {
@@ -911,7 +929,7 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
       const resultMsg = `✅ *Archive Complete!*
 
-📦 Archived: ${archivedCount} wallets
+${syncedCount > 0 ? `🔄 Synced: ${syncedCount} wallets\n` : ''}📦 Archived: ${archivedCount} wallets
 📁 Remaining active: ${walletsToKeep.length} wallets
 
 *Alasan wallet tidak di-archive:*
@@ -936,77 +954,6 @@ Gunakan /walletstatus untuk cek detail
 
     } catch (error) {
       logger.error('Archive completed error', { userId, error: error.message });
-      bot.sendMessage(chatId, `❌ Error: ${error.message}`);
-    }
-  });
-
-  bot.onText(/\/syncmint/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-
-    if (!authMiddleware.isAuthorized(userId)) {
-      bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
-      return;
-    }
-
-    logger.info('Sync mint status command', { userId });
-
-    try {
-      const walletData = await loadWallets();
-
-      if (walletData.wallets.length === 0) {
-        bot.sendMessage(chatId, '❌ Tidak ada wallet aktif!');
-        return;
-      }
-
-      const statusMsg = await bot.sendMessage(chatId, 
-        `⏳ Syncing mint status for ${walletData.wallets.length} wallets...`
-      );
-
-      let syncedCount = 0;
-      let unchangedCount = 0;
-
-      for (const wallet of walletData.wallets) {
-        try {
-          const contractMintStatus = await contract.methods.hasMinted(wallet.address).call();
-          
-          if (contractMintStatus !== wallet.hasMinted) {
-            wallet.hasMinted = contractMintStatus;
-            syncedCount++;
-            logger.info('Mint status synced', { 
-              address: wallet.address, 
-              oldStatus: !contractMintStatus,
-              newStatus: contractMintStatus 
-            });
-          } else {
-            unchangedCount++;
-          }
-        } catch (e) {
-          logger.error('Error syncing wallet', { address: wallet.address, error: e.message });
-        }
-      }
-
-      if (syncedCount > 0) {
-        await saveWallets(walletData);
-      }
-
-      const resultMsg = `✅ *Sync Complete!*
-
-🔄 Updated: ${syncedCount} wallets
-✓ Already synced: ${unchangedCount} wallets
-
-Status mint telah disesuaikan dengan smart contract.
-Gunakan /archivecompleted untuk memindahkan wallet yang sudah selesai.
-      `;
-
-      bot.editMessageText(resultMsg, {
-        chat_id: chatId,
-        message_id: statusMsg.message_id,
-        parse_mode: 'Markdown'
-      });
-
-    } catch (error) {
-      logger.error('Sync mint status error', { userId, error: error.message });
       bot.sendMessage(chatId, `❌ Error: ${error.message}`);
     }
   });
@@ -1075,12 +1022,11 @@ ETH: ${web3.utils.fromWei(totalETH.toString(), 'ether')} ETH
 sovaBTC: ${formatTokenAmount(totalSovaBTC.toString(), decimals)} sovaBTC
 
 *Commands:*
-/syncmint - Sync status mint dengan smart contract
 /fundwallets - Fund semua wallet aktif
 /mintall - Mint dari wallet yang belum mint
 /collectall - Collect sovaBTC dari semua wallet
 /collectgas - Collect ETH gas dari semua wallet
-/archivecompleted - Pindahkan wallet selesai ke archive
+/archivecompleted - Sync & archive wallet selesai
       `;
 
       bot.sendMessage(chatId, statusDisplayMsg, { parse_mode: 'Markdown' });
