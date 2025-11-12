@@ -4,12 +4,22 @@ const path = require('path');
 const lockfile = require('proper-lockfile');
 const logger = require('../utils/logger');
 const { encryptData, decryptData } = require('../utils/crypto');
-const { WALLET_FILE, MINTED_WALLET_FILE, LOCK_RETRIES, LOCK_MIN_TIMEOUT } = require('../config/constants');
+const { WALLET_FILE, MINTED_WALLET_FILE, LOCK_RETRIES, LOCK_MIN_TIMEOUT, BACKUP_THROTTLE_OPERATIONS } = require('../config/constants');
 
 const BACKUP_DIR = 'backups';
 const MAX_BACKUPS = 5;
 
+let walletCache = null;
+let walletCacheTimestamp = 0;
+const CACHE_TTL_MS = 5000;
+let operationsSinceBackup = 0;
+
 async function loadWallets() {
+  const now = Date.now();
+  if (walletCache && (now - walletCacheTimestamp) < CACHE_TTL_MS) {
+    return JSON.parse(JSON.stringify(walletCache));
+  }
+
   let release;
   try {
     if (fsSync.existsSync(WALLET_FILE)) {
@@ -26,6 +36,9 @@ async function loadWallets() {
           privateKey: decryptData(wallet.privateKey)
         }));
       }
+      
+      walletCache = JSON.parse(JSON.stringify(walletData));
+      walletCacheTimestamp = now;
       
       return walletData;
     }
@@ -56,10 +69,26 @@ async function saveWallets(walletData) {
     });
     
     await fs.writeFile(WALLET_FILE, JSON.stringify(encryptedData, null, 2));
+    
+    walletCache = JSON.parse(JSON.stringify(walletData));
+    walletCacheTimestamp = Date.now();
+    
     logger.info('Wallets saved successfully', { count: walletData.wallets.length });
     
-    // Auto-backup wallet file
-    await createBackup(WALLET_FILE, encryptedData);
+    operationsSinceBackup++;
+    if (operationsSinceBackup >= BACKUP_THROTTLE_OPERATIONS) {
+      const currentCount = operationsSinceBackup;
+      setImmediate(() => {
+        createBackup(WALLET_FILE, encryptedData)
+          .then(() => {
+            operationsSinceBackup = 0;
+            logger.info('Throttled backup completed successfully');
+          })
+          .catch((err) => {
+            logger.error('Throttled backup failed', { error: err.message });
+          });
+      });
+    }
     
     return true;
   } catch (error) {
@@ -167,6 +196,9 @@ async function restoreFromBackup(backupPath) {
     });
     
     await fs.writeFile(WALLET_FILE, JSON.stringify(walletData, null, 2));
+    
+    walletCache = null;
+    walletCacheTimestamp = 0;
     
     logger.info('Wallet restored from backup', { 
       backup: backupPath, 

@@ -3,6 +3,27 @@ const logger = require('../utils/logger');
 const { loadWallets, loadMintedWallets, getAllWalletsForCheckin } = require('../services/walletService');
 const { getProfile, performCheckIn, checkInStatus } = require('../services/checkinService');
 const { formatAddress } = require('../utils/formatters');
+const { MAX_CONCURRENT_OPERATIONS, TELEGRAM_UPDATE_INTERVAL } = require('../config/constants');
+
+function createConcurrencyLimiter(limit) {
+  let running = 0;
+  const queue = [];
+
+  return async function(fn) {
+    while (running >= limit) {
+      await new Promise(resolve => queue.push(resolve));
+    }
+
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      const resolve = queue.shift();
+      if (resolve) resolve();
+    }
+  };
+}
 
 function registerCheckinCommands(bot, web3Service, authMiddleware) {
   const account = web3Service.getAccount();
@@ -104,50 +125,55 @@ Wallet: \`${account.address}\`
       let failCount = 0;
       let totalPoints = 0;
 
-      for (let i = 0; i < allWallets.length; i++) {
-        const wallet = allWallets[i];
+      const limiter = createConcurrencyLimiter(MAX_CONCURRENT_OPERATIONS);
+      let processedCount = 0;
+      let lastUpdateCount = 0;
 
-        try {
-          terminal.printProgressBar(i + 1, allWallets.length, `📅 Check-In Progress`);
-          spinner.text = terminal.colors.info(`Processing ${formatAddress(wallet.address)}`);
+      const checkinTasks = allWallets.map((wallet, index) => 
+        limiter(async () => {
+          try {
+            const result = await performCheckIn(wallet.address);
 
-          await bot.editMessageText(
-            `✅ Check-In: ${i + 1}/${allWallets.length}\n\n✅ ${successCount} | ⏭️ ${alreadyCheckedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(i + 1, allWallets.length)}\n\n${formatAddress(wallet.address)}`,
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id
-            }
-          ).catch(() => {});
-
-          const result = await performCheckIn(wallet.address);
-
-          if (result.success && result.data && result.data.success) {
-            spinner.succeed(terminal.colors.success(`✓ ${i + 1}/${allWallets.length} ${formatAddress(wallet.address)} → +${result.data.pointsAwarded} pts`));
-            spinner.start();
-            successCount++;
-            totalPoints += result.data.pointsAwarded;
-          } else {
-            // Check status to determine if already checked in
-            const status = await checkInStatus(wallet.address);
-            if (status && !status.canCheckIn) {
-              spinner.warn(terminal.colors.warning(`⊘ ${i + 1}/${allWallets.length} ${formatAddress(wallet.address)} - Already checked in`));
+            if (result.success && result.data && result.data.success) {
+              spinner.succeed(terminal.colors.success(`✓ ${processedCount + 1}/${allWallets.length} ${formatAddress(wallet.address)} → +${result.data.pointsAwarded} pts`));
               spinner.start();
-              alreadyCheckedCount++;
+              successCount++;
+              totalPoints += result.data.pointsAwarded;
             } else {
-              spinner.fail(terminal.colors.error(`✗ ${i + 1}/${allWallets.length} ${formatAddress(wallet.address)}`));
-              spinner.start();
-              failCount++;
+              const status = await checkInStatus(wallet.address);
+              if (status && !status.canCheckIn) {
+                spinner.warn(terminal.colors.warning(`⊘ ${processedCount + 1}/${allWallets.length} ${formatAddress(wallet.address)} - Already checked in`));
+                spinner.start();
+                alreadyCheckedCount++;
+              } else {
+                spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${allWallets.length} ${formatAddress(wallet.address)}`));
+                spinner.start();
+                failCount++;
+              }
+            }
+
+          } catch (e) {
+            spinner.fail(terminal.colors.error(`✗ ${processedCount + 1}/${allWallets.length} ${formatAddress(wallet.address)}`));
+            spinner.start();
+            failCount++;
+          } finally {
+            processedCount++;
+
+            if (processedCount - lastUpdateCount >= TELEGRAM_UPDATE_INTERVAL || processedCount === allWallets.length) {
+              terminal.printProgressBar(processedCount, allWallets.length, `📅 Check-In Progress`);
+
+              bot.editMessageText(
+                `✅ Check-In: ${processedCount}/${allWallets.length}\n\n✅ ${successCount} | ⏭️ ${alreadyCheckedCount} | ❌ ${failCount}\n\n${terminal.createProgressBarText(processedCount, allWallets.length)}`,
+                { chat_id: chatId, message_id: statusMsg.message_id }
+              ).catch(() => {});
+
+              lastUpdateCount = processedCount;
             }
           }
+        })
+      );
 
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-        } catch (e) {
-          spinner.fail(terminal.colors.error(`✗ ${i + 1}/${allWallets.length} ${formatAddress(wallet.address)}`));
-          spinner.start();
-          failCount++;
-        }
-      }
+      await Promise.all(checkinTasks);
 
       spinner.stop();
       logger.enableConsole();
