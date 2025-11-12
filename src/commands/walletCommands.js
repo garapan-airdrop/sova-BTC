@@ -858,10 +858,17 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 
       let archivedCount = 0;
       const walletsToKeep = [];
+      const skipReasons = {
+        notMinted: 0,
+        hasSovaBTC: 0,
+        hasETH: 0,
+        checkError: 0
+      };
 
       for (const wallet of walletData.wallets) {
         if (!wallet.hasMinted) {
           walletsToKeep.push(wallet);
+          skipReasons.notMinted++;
           continue;
         }
 
@@ -875,10 +882,27 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
             archivedCount++;
           } else {
             walletsToKeep.push(wallet);
+            
+            // Track why it was kept
+            if (BigInt(sovaBTCBalance) > 0n) {
+              skipReasons.hasSovaBTC++;
+              logger.info('Wallet kept - has sovaBTC', { 
+                address: wallet.address, 
+                sovaBTC: web3.utils.fromWei(sovaBTCBalance.toString(), 'ether') 
+              });
+            }
+            if (BigInt(ethBalance) >= BigInt(web3.utils.toWei('0.0001', 'ether'))) {
+              skipReasons.hasETH++;
+              logger.info('Wallet kept - has ETH', { 
+                address: wallet.address, 
+                eth: web3.utils.fromWei(ethBalance, 'ether') 
+              });
+            }
           }
         } catch (e) {
           logger.error('Error checking wallet for archive', { address: wallet.address, error: e.message });
           walletsToKeep.push(wallet);
+          skipReasons.checkError++;
         }
       }
 
@@ -890,7 +914,13 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
 📦 Archived: ${archivedCount} wallets
 📁 Remaining active: ${walletsToKeep.length} wallets
 
-Wallet yang di-archive:
+*Alasan wallet tidak di-archive:*
+🔸 Belum mint: ${skipReasons.notMinted}
+💎 Masih punya sovaBTC: ${skipReasons.hasSovaBTC}
+⛽ Masih punya ETH (≥0.0001): ${skipReasons.hasETH}
+❌ Error saat cek: ${skipReasons.checkError}
+
+*Kriteria archive:*
 • Sudah mint ✓
 • sovaBTC balance = 0
 • ETH balance < 0.0001
