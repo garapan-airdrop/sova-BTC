@@ -9,17 +9,27 @@ const { WALLET_FILE, MINTED_WALLET_FILE, LOCK_RETRIES, LOCK_MIN_TIMEOUT, BACKUP_
 const BACKUP_DIR = 'backups';
 const MAX_BACKUPS = 5;
 
-let walletCache = null;
-let walletCacheTimestamp = 0;
-const CACHE_TTL_MS = 5000;
 let operationsSinceBackup = 0;
 
-async function loadWallets() {
-  const now = Date.now();
-  if (walletCache && (now - walletCacheTimestamp) < CACHE_TTL_MS) {
-    return JSON.parse(JSON.stringify(walletCache));
-  }
+let walletWriteMutex = Promise.resolve();
 
+async function acquireWriteMutex(operation) {
+  const previousMutex = walletWriteMutex;
+  let releaseMutex;
+  walletWriteMutex = new Promise(resolve => {
+    releaseMutex = resolve;
+  });
+  
+  await previousMutex;
+  
+  try {
+    return await operation();
+  } finally {
+    releaseMutex();
+  }
+}
+
+async function loadWallets() {
   let release;
   try {
     if (fsSync.existsSync(WALLET_FILE)) {
@@ -37,9 +47,6 @@ async function loadWallets() {
         }));
       }
       
-      walletCache = JSON.parse(JSON.stringify(walletData));
-      walletCacheTimestamp = now;
-      
       return walletData;
     }
   } catch (error) {
@@ -53,52 +60,50 @@ async function loadWallets() {
 }
 
 async function saveWallets(walletData) {
-  let release;
-  try {
-    const encryptedData = {
-      ...walletData,
-      wallets: walletData.wallets.map(wallet => ({
-        ...wallet,
-        privateKey: encryptData(wallet.privateKey)
-      }))
-    };
-    
-    release = await lockfile.lock(WALLET_FILE, {
-      retries: { retries: LOCK_RETRIES, minTimeout: LOCK_MIN_TIMEOUT },
-      realpath: false
-    });
-    
-    await fs.writeFile(WALLET_FILE, JSON.stringify(encryptedData, null, 2));
-    
-    walletCache = JSON.parse(JSON.stringify(walletData));
-    walletCacheTimestamp = Date.now();
-    
-    logger.info('Wallets saved successfully', { count: walletData.wallets.length });
-    
-    operationsSinceBackup++;
-    if (operationsSinceBackup >= BACKUP_THROTTLE_OPERATIONS) {
-      const currentCount = operationsSinceBackup;
-      setImmediate(() => {
-        createBackup(WALLET_FILE, encryptedData)
-          .then(() => {
-            operationsSinceBackup = 0;
-            logger.info('Throttled backup completed successfully');
-          })
-          .catch((err) => {
-            logger.error('Throttled backup failed', { error: err.message });
-          });
+  return acquireWriteMutex(async () => {
+    let release;
+    try {
+      const encryptedData = {
+        ...walletData,
+        wallets: walletData.wallets.map(wallet => ({
+          ...wallet,
+          privateKey: encryptData(wallet.privateKey)
+        }))
+      };
+      
+      release = await lockfile.lock(WALLET_FILE, {
+        retries: { retries: LOCK_RETRIES, minTimeout: LOCK_MIN_TIMEOUT },
+        realpath: false
       });
+      
+      await fs.writeFile(WALLET_FILE, JSON.stringify(encryptedData, null, 2));
+      
+      logger.info('Wallets saved successfully', { count: walletData.wallets.length });
+      
+      operationsSinceBackup++;
+      if (operationsSinceBackup >= BACKUP_THROTTLE_OPERATIONS) {
+        setImmediate(() => {
+          createBackup(WALLET_FILE, encryptedData)
+            .then(() => {
+              operationsSinceBackup = 0;
+              logger.info('Throttled backup completed successfully');
+            })
+            .catch((err) => {
+              logger.error('Throttled backup failed', { error: err.message });
+            });
+        });
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Error saving wallets', { error: error.message });
+      return false;
+    } finally {
+      if (release) {
+        await release();
+      }
     }
-    
-    return true;
-  } catch (error) {
-    logger.error('Error saving wallets', { error: error.message });
-    return false;
-  } finally {
-    if (release) {
-      await release();
-    }
-  }
+  });
 }
 
 async function createBackup(filename, data) {
@@ -196,9 +201,6 @@ async function restoreFromBackup(backupPath) {
     });
     
     await fs.writeFile(WALLET_FILE, JSON.stringify(walletData, null, 2));
-    
-    walletCache = null;
-    walletCacheTimestamp = 0;
     
     logger.info('Wallet restored from backup', { 
       backup: backupPath, 
