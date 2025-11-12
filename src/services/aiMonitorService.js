@@ -17,13 +17,6 @@ class AIMonitorService {
       {
         name: 'llama-3.1-8b-instant',
         dailyLimit: 14400,
-
-
-  getCacheKey(errorMsg, context) {
-    const contextStr = JSON.stringify(context);
-    return `${errorMsg.substring(0, 100)}_${contextStr.substring(0, 50)}`;
-  }
-
         quality: 7,
         description: 'Standard Quality (7/10)'
       }
@@ -32,6 +25,11 @@ class AIMonitorService {
     this.analysisCache = new Map(); // Cache untuk error yang sama
     this.cacheExpiry = 3600000; // 1 jam
     this.rateLimitRetry = 3;
+  }
+
+  getCacheKey(errorMsg, context) {
+    const contextStr = JSON.stringify(context);
+    return `${errorMsg.substring(0, 100)}_${contextStr.substring(0, 50)}`;
   }
 
   async analyzeErrorWithGroq(error, context = {}) {
