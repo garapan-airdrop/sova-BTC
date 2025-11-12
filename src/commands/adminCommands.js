@@ -3,6 +3,7 @@ const { validateAddress, validateTransferAmount } = require('../utils/validators
 const { formatTokenAmount, parseTokenAmount, hasMinimumBalance } = require('../utils/formatters');
 const { GAS_SAFETY_MARGIN, DEFAULT_DECIMALS } = require('../config/constants');
 const aiMonitor = require('../services/aiMonitorService');
+const errorHandler = require('../utils/errorHandler');
 
 function registerAdminCommands(bot, web3Service, authMiddleware) {
   const web3 = web3Service.getWeb3();
@@ -335,19 +336,7 @@ From: \`${account.address}\`
       });
 
     } catch (error) {
-      logger.error('Transfer error', { error: error.message });
-      const errorMsg = `❌ *Transfer Failed!*
-
-Error: \`${error.message}\`
-
-💡 *Possible reasons:*
-• Insufficient sovaBTC balance
-• Insufficient ETH for gas
-• Invalid recipient address
-• Network error
-• Contract error
-      `;
-      bot.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
+      errorHandler.handle(bot, chatId, error, 'Transfer');
     }
   });
 
@@ -487,17 +476,7 @@ Error: \`${error.message}\`
       });
 
     } catch (error) {
-      logger.error('Mint error', { error: error.message });
-      bot.sendMessage(chatId, `❌ *Mint Failed!*
-
-Error: \`${error.message}\`
-
-💡 *Possible reasons:*
-• Already minted
-• MAX_SUPPLY reached
-• Insufficient ETH for gas
-• Network error
-      `, { parse_mode: 'Markdown' });
+      errorHandler.handle(bot, chatId, error, 'Mint');
     }
   });
 }

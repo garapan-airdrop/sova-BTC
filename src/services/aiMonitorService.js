@@ -17,11 +17,21 @@ class AIMonitorService {
       {
         name: 'llama-3.1-8b-instant',
         dailyLimit: 14400,
+
+
+  getCacheKey(errorMsg, context) {
+    const contextStr = JSON.stringify(context);
+    return `${errorMsg.substring(0, 100)}_${contextStr.substring(0, 50)}`;
+  }
+
         quality: 7,
         description: 'Standard Quality (7/10)'
       }
     ];
     this.currentModelIndex = 0;
+    this.analysisCache = new Map(); // Cache untuk error yang sama
+    this.cacheExpiry = 3600000; // 1 jam
+    this.rateLimitRetry = 3;
   }
 
   async analyzeErrorWithGroq(error, context = {}) {
@@ -30,8 +40,17 @@ class AIMonitorService {
       return this.analyzeError(error, context);
     }
 
+    const errorMsg = error.message || String(error);
+    
+    // Check cache first
+    const cacheKey = this.getCacheKey(errorMsg, context);
+    const cached = this.analysisCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < this.cacheExpiry)) {
+      logger.info('Using cached AI analysis', { errorType: cached.analysis.errorType });
+      return cached.analysis;
+    }
+
     try {
-      const errorMsg = error.message || String(error);
       const prompt = `Analyze this error from a Telegram bot for sovaBTC faucet:
 
 Error: ${errorMsg}
@@ -86,6 +105,12 @@ Keep response concise and in Bahasa Indonesia.`;
       // Parse AI response
       const analysis = this.parseGroqResponse(aiResponse, error);
       this.recordError(error, analysis);
+
+      // Store in cache
+      this.analysisCache.set(cacheKey, {
+        analysis,
+        timestamp: Date.now()
+      });
 
       logger.info('Error analyzed with Groq AI', { 
         model: model.name,

@@ -7,6 +7,7 @@ const { validateEnvironmentVariables } = require('./src/utils/envValidator');
 const web3Service = require('./src/services/web3Service');
 const AuthMiddleware = require('./src/middleware/auth');
 const aiMonitor = require('./src/services/aiMonitorService');
+const errorHandler = require('./src/utils/errorHandler');
 const { registerPublicCommands } = require('./src/commands/publicCommands');
 const { registerAdminCommands } = require('./src/commands/adminCommands');
 const { registerWalletCommands } = require('./src/commands/walletCommands');
@@ -112,6 +113,9 @@ try {
 
   const authMiddleware = new AuthMiddleware(ALLOWED_USERS);
 
+  // Initialize error handler
+  errorHandler.initialize(bot, ALLOWED_USERS);
+
   registerPublicCommands(bot, web3Service, authMiddleware);
   registerAdminCommands(bot, web3Service, authMiddleware);
   registerWalletCommands(bot, web3Service, authMiddleware);
@@ -129,22 +133,8 @@ try {
       return;
     }
     
-    // AI Analysis dengan Groq untuk error non-EFATAL
-    const analysis = await aiMonitor.analyzeErrorWithGroq(error, { source: 'telegram_polling' });
-    logger.error('Telegram polling error', { 
-      code: error.code, 
-      message: error.message,
-      aiAnalysis: analysis
-    });
-
-    // Notify admin hanya untuk error CRITICAL
-    if (analysis.severity === 'CRITICAL' && ALLOWED_USERS.length > 0) {
-      const adminId = ALLOWED_USERS[0];
-      const analysisMsg = aiMonitor.formatAnalysisForTelegram(analysis, error);
-      bot.sendMessage(adminId, analysisMsg, { parse_mode: 'Markdown' }).catch(err => {
-        logger.error('Failed to send AI analysis to admin', { error: err.message });
-      });
-    }
+    // Use centralized error handler
+    await errorHandler.handleError(error, { source: 'telegram_polling' });
   });
 
   bot.on('error', (error) => {
@@ -177,25 +167,11 @@ process.on('unhandledRejection', async (reason, promise) => {
     return;
   }
   
-  // AI Analysis dengan Groq
-  const analysis = await aiMonitor.analyzeErrorWithGroq(reason, { source: 'unhandled_rejection' });
-  
-  logger.error('Unhandled Promise Rejection', { 
-    reason: reason, 
-    promise: promise,
-    aiAnalysis: analysis
+  // Use centralized error handler
+  await errorHandler.handleError(reason, { 
+    source: 'unhandled_rejection',
+    promise: String(promise)
   });
-  
-  // Only notify admin for MEDIUM and CRITICAL errors
-  if (ALLOWED_USERS.length > 0 && reason && reason.code !== 'EFATAL' && 
-      (analysis.severity === 'MEDIUM' || analysis.severity === 'CRITICAL')) {
-    const adminId = ALLOWED_USERS[0];
-    const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-    const analysisMsg = aiMonitor.formatAnalysisForTelegram(analysis, reason);
-    bot.sendMessage(adminId, analysisMsg, { parse_mode: 'Markdown' }).catch(err => {
-      logger.error('Failed to send AI analysis to admin', { error: err.message });
-    });
-  }
 });
 
 process.on('uncaughtException', (error) => {
