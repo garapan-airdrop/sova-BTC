@@ -10,6 +10,63 @@ function registerAdminCommands(bot, web3Service, authMiddleware) {
   const contract = web3Service.getContract();
   const account = web3Service.getAccount();
 
+  bot.onText(/\/aihealth/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!authMiddleware.isAuthorized(userId)) {
+      bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+      return;
+    }
+
+    try {
+      const stats = aiMonitor.getErrorStats();
+      const hasGroqKey = !!process.env.GROQ_API_KEY;
+      
+      let message = `🤖 *AI Monitoring System Health*\n\n`;
+      
+      // AI Status
+      message += `📡 *AI Status:*\n`;
+      if (hasGroqKey) {
+        message += `✅ Groq AI: ACTIVE\n`;
+        message += `🔑 API Key: Configured\n`;
+        message += `📊 AI Analyzed: ${stats.aiAnalyzedCount || 0} errors\n`;
+      } else {
+        message += `⚠️ Groq AI: INACTIVE\n`;
+        message += `🔑 API Key: Not Set\n`;
+        message += `📊 Mode: Rule-Based Analysis\n`;
+      }
+      message += `\n`;
+
+      // Error Monitoring Stats
+      message += `📈 *Monitoring Stats:*\n`;
+      message += `Total Errors: ${stats.totalErrors}\n`;
+      message += `Critical: ${stats.criticalErrors}\n`;
+      message += `Cache Size: ${aiMonitor.analysisCache?.size || 0} entries\n`;
+      message += `\n`;
+
+      // Recent Activity
+      if (stats.recentErrors.length > 0) {
+        const lastError = stats.recentErrors[stats.recentErrors.length - 1];
+        const timeSince = Math.floor((Date.now() - new Date(lastError.timestamp)) / 60000);
+        message += `🕐 *Last Error:*\n`;
+        message += `${timeSince} minutes ago\n`;
+        message += `Type: ${lastError.analysis.errorType}\n`;
+        message += `Severity: ${lastError.analysis.severity}\n`;
+      } else {
+        message += `✅ *Status:* No errors detected\n`;
+      }
+
+      message += `\n💡 Use /errorstats for detailed error analysis`;
+
+      bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+      logger.error('AI health command error', { userId, error: error.message });
+      bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    }
+  });
+
   bot.onText(/\/errorstats/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
@@ -24,7 +81,8 @@ function registerAdminCommands(bot, web3Service, authMiddleware) {
 
       let message = `📊 *Error Statistics*\n\n`;
       message += `📈 Total Errors: ${stats.totalErrors}\n`;
-      message += `🚨 Critical Errors: ${stats.criticalErrors}\n\n`;
+      message += `🚨 Critical Errors: ${stats.criticalErrors}\n`;
+      message += `🤖 AI Analyzed: ${stats.aiAnalyzedCount || 0}\n\n`;
 
       if (Object.keys(stats.errorsByType).length > 0) {
         message += `📋 *Errors by Type:*\n`;
@@ -40,7 +98,8 @@ function registerAdminCommands(bot, web3Service, authMiddleware) {
         message += `🕐 *Recent Errors (Last ${Math.min(5, stats.recentErrors.length)}):*\n`;
         stats.recentErrors.slice(-5).reverse().forEach((e, i) => {
           const time = new Date(e.timestamp).toLocaleTimeString('id-ID');
-          message += `${i + 1}. [${time}] ${e.analysis.errorType}\n`;
+          const aiTag = e.analysis.aiGenerated ? '🤖' : '📋';
+          message += `${i + 1}. ${aiTag} [${time}] ${e.analysis.errorType}\n`;
           message += `   Severity: ${e.analysis.severity}\n`;
         });
       } else {

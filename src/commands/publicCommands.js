@@ -159,7 +159,8 @@ Selamat datang di Sova BTC Faucet!
 • /faucet → Claim sovaBTC (test user flow)
 
 *🤖 AI Monitoring:*
-• /errorstats → AI error monitoring stats
+• /aihealth → AI system health status
+• /errorstats → Error monitoring stats
 
 *🔧 Admin Commands:*
 • /balance - Cek balance main wallet
