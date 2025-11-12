@@ -2,13 +2,14 @@ const logger = require('../utils/logger');
 const { validateAddress, validateTransferAmount } = require('../utils/validators');
 const { formatTokenAmount, parseTokenAmount, hasMinimumBalance } = require('../utils/formatters');
 const { GAS_SAFETY_MARGIN, DEFAULT_DECIMALS } = require('../config/constants');
+const aiMonitor = require('../services/aiMonitor');
 
 function registerAdminCommands(bot, web3Service, authMiddleware) {
   const web3 = web3Service.getWeb3();
   const contract = web3Service.getContract();
   const account = web3Service.getAccount();
 
-  bot.onText(/\/info/, async (msg) => {
+  bot.onText(/\/errorstats/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
@@ -17,7 +18,52 @@ function registerAdminCommands(bot, web3Service, authMiddleware) {
       return;
     }
 
-    logger.info('Info command', { userId });
+    try {
+      const stats = aiMonitor.getErrorStats();
+
+      let message = `📊 *Error Statistics*\n\n`;
+      message += `📈 Total Errors: ${stats.totalErrors}\n`;
+      message += `🚨 Critical Errors: ${stats.criticalErrors}\n\n`;
+
+      if (Object.keys(stats.errorsByType).length > 0) {
+        message += `📋 *Errors by Type:*\n`;
+        Object.entries(stats.errorsByType)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([type, count]) => {
+            message += `  • ${type}: ${count}x\n`;
+          });
+        message += `\n`;
+      }
+
+      if (stats.recentErrors.length > 0) {
+        message += `🕐 *Recent Errors (Last ${Math.min(5, stats.recentErrors.length)}):*\n`;
+        stats.recentErrors.slice(-5).reverse().forEach((e, i) => {
+          const time = new Date(e.timestamp).toLocaleTimeString('id-ID');
+          message += `${i + 1}. [${time}] ${e.analysis.errorType}\n`;
+          message += `   Severity: ${e.analysis.severity}\n`;
+        });
+      } else {
+        message += `✅ No errors recorded yet!`;
+      }
+
+      bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+      logger.error('Error stats command error', { userId, error: error.message });
+      bot.sendMessage(chatId, `❌ Error: ${error.message}`);
+    }
+  });
+
+  bot.onText(/\/health/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!authMiddleware.isAuthorized(userId)) {
+      bot.sendMessage(chatId, '❌ Unauthorized! Contact admin.');
+      return;
+    }
+
+    logger.info('Health command', { userId });
 
     const rpcUrl = process.env.RPC_URL || 'https://rpc.testnet.sova.io';
     const contractAddress = process.env.CONTRACT_ADDRESS || '0x5Db496debB227455cE9f482f9E443f1073a55456';
@@ -171,9 +217,9 @@ Contoh yang benar:
       const amount = parseTokenAmount(amountValidation.string, decimals);
 
       const terminal = require('../utils/terminal');
-      
+
       terminal.printTransactionStart('TRANSFER', `Sending ${formatTokenAmount(amount.toString(), decimals)} sovaBTC`);
-      
+
       const statusMsg = await bot.sendMessage(chatId, `
 ╔═══════════════════════════════════╗
 ║  💸 TRANSFERRING sovaBTC  ║
@@ -342,7 +388,7 @@ Error: \`${error.message}\`
       spinner.succeed(terminal.colors.success('Wallet eligible'));
       spinner.start();
       spinner.text = terminal.colors.info('Checking supply availability...');
-      
+
       await bot.editMessageText(`
 🚀 *Minting sovaBTC...*
 
@@ -379,7 +425,7 @@ Error: \`${error.message}\`
       spinner.succeed(terminal.colors.success('Supply available'));
       spinner.start();
       spinner.text = terminal.colors.info('Estimating gas...');
-      
+
       await bot.editMessageText(`
 🚀 *Minting sovaBTC...*
 
@@ -399,7 +445,7 @@ Error: \`${error.message}\`
       spinner.succeed(terminal.colors.success(`Gas estimated: ${gasEstimate.toString()}`));
       spinner.start();
       spinner.text = terminal.colors.info('Sending mint transaction...');
-      
+
       await bot.editMessageText(`
 🚀 *Minting sovaBTC...*
 

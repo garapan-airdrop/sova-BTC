@@ -157,6 +157,16 @@ Selamat datang di Sova BTC Faucet!
 
 *🚰 Faucet Management:*
 • /faucet → Claim sovaBTC (test user flow)
+
+*🤖 AI Monitoring:*
+• /errorstats → AI error monitoring stats
+
+*🔧 Admin Commands:*
+• /balance - Cek balance main wallet
+• /checkbalance <address> - Cek balance specific address
+• /health - Bot health check
+• /errorstats - AI error monitoring stats
+• /logs - View recent logs
       `;
       bot.sendMessage(chatId, adminHelpMsg, { parse_mode: 'Markdown' }).catch(err => {
         logger.error('Error sending admin help', { error: err.message });
