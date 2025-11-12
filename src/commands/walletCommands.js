@@ -851,13 +851,14 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
         return;
       }
 
+      const totalWallets = walletData.wallets.length;
       const statusMsg = await bot.sendMessage(chatId, 
-        `⏳ Syncing & checking ${walletData.wallets.length} wallets...`
+        `⏳ Processing ${totalWallets} wallets...\n\n[░░░░░░░░░░] 0%`
       );
 
-      // Step 1: Sync mint status with smart contract
+      // Step 1: Parallel sync mint status
       let syncedCount = 0;
-      for (const wallet of walletData.wallets) {
+      const syncPromises = walletData.wallets.map(async (wallet, index) => {
         try {
           const contractMintStatus = await contract.methods.hasMinted(wallet.address).call();
           
@@ -870,19 +871,33 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
               newStatus: contractMintStatus 
             });
           }
+
+          // Update progress every 20%
+          const progress = Math.floor(((index + 1) / totalWallets) * 100);
+          if ((index + 1) % Math.max(1, Math.floor(totalWallets / 5)) === 0) {
+            const filled = Math.floor(progress / 10);
+            const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+            await bot.editMessageText(
+              `⏳ Syncing mint status...\n\n[${progressBar}] ${progress}%\n${index + 1}/${totalWallets} checked`,
+              { chat_id: chatId, message_id: statusMsg.message_id }
+            ).catch(() => {}); // Ignore rate limit errors
+          }
+
+          return { wallet, success: true };
         } catch (e) {
           logger.error('Error syncing wallet', { address: wallet.address, error: e.message });
+          return { wallet, success: false };
         }
-      }
+      });
 
-      if (syncedCount > 0) {
-        await bot.editMessageText(
-          `⏳ Synced ${syncedCount} wallets\n\nChecking for archiving...`,
-          { chat_id: chatId, message_id: statusMsg.message_id }
-        );
-      }
+      await Promise.all(syncPromises);
 
-      // Step 2: Archive completed wallets
+      await bot.editMessageText(
+        `✅ Sync complete: ${syncedCount} updated\n\n⏳ Checking balances for archiving...`,
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+
+      // Step 2: Parallel balance check for archiving
       let archivedCount = 0;
       const walletsToKeep = [];
       const skipReasons = {
@@ -892,37 +907,58 @@ ${creatorTxHash ? `Creator TX: \`${creatorTxHash}\`` : ''}
         checkError: 0
       };
 
-      for (const wallet of walletData.wallets) {
+      const archivePromises = walletData.wallets.map(async (wallet, index) => {
         if (!wallet.hasMinted) {
-          walletsToKeep.push(wallet);
           skipReasons.notMinted++;
-          continue;
+          return { wallet, keep: true };
         }
 
         try {
-          const sovaBTCBalance = await contract.methods.balanceOf(wallet.address).call();
-          const ethBalance = await web3.eth.getBalance(wallet.address);
+          const [sovaBTCBalance, ethBalance] = await Promise.all([
+            contract.methods.balanceOf(wallet.address).call(),
+            web3.eth.getBalance(wallet.address)
+          ]);
+
+          // Update progress
+          const progress = Math.floor(((index + 1) / totalWallets) * 100);
+          if ((index + 1) % Math.max(1, Math.floor(totalWallets / 5)) === 0) {
+            const filled = Math.floor(progress / 10);
+            const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+            await bot.editMessageText(
+              `⏳ Checking balances...\n\n[${progressBar}] ${progress}%\n${index + 1}/${totalWallets} checked`,
+              { chat_id: chatId, message_id: statusMsg.message_id }
+            ).catch(() => {});
+          }
 
           // Archive if: already minted AND no sovaBTC AND very low ETH
           if (BigInt(sovaBTCBalance) === 0n && BigInt(ethBalance) < BigInt(web3.utils.toWei('0.0001', 'ether'))) {
             await archiveMintedWallet(wallet);
             archivedCount++;
+            return { wallet, keep: false };
           } else {
-            walletsToKeep.push(wallet);
-            
             if (BigInt(sovaBTCBalance) > 0n) {
               skipReasons.hasSovaBTC++;
             }
             if (BigInt(ethBalance) >= BigInt(web3.utils.toWei('0.0001', 'ether'))) {
               skipReasons.hasETH++;
             }
+            return { wallet, keep: true };
           }
         } catch (e) {
           logger.error('Error checking wallet for archive', { address: wallet.address, error: e.message });
-          walletsToKeep.push(wallet);
           skipReasons.checkError++;
+          return { wallet, keep: true };
         }
-      }
+      });
+
+      const results = await Promise.all(archivePromises);
+      
+      // Filter wallets to keep
+      results.forEach(result => {
+        if (result.keep) {
+          walletsToKeep.push(result.wallet);
+        }
+      });
 
       walletData.wallets = walletsToKeep;
       await saveWallets(walletData);
