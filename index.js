@@ -119,7 +119,7 @@ try {
   registerVaultCommands(bot, web3Service, authMiddleware);
   registerBridgeCommands(bot, web3Service, authMiddleware);
 
-  bot.on('polling_error', (error) => {
+  bot.on('polling_error', async (error) => {
     // Ignore EFATAL errors (usually network hiccups)
     if (error.code === 'EFATAL') {
       logger.warn('Network hiccup detected (EFATAL), bot will auto-recover', {
@@ -129,8 +129,8 @@ try {
       return;
     }
     
-    // AI Analysis untuk error non-EFATAL
-    const analysis = aiMonitor.analyzeError(error, { source: 'telegram_polling' });
+    // AI Analysis dengan Groq untuk error non-EFATAL
+    const analysis = await aiMonitor.analyzeErrorWithGroq(error, { source: 'telegram_polling' });
     logger.error('Telegram polling error', { 
       code: error.code, 
       message: error.message,
@@ -171,14 +171,14 @@ try {
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
   // Skip logging EFATAL errors (Telegram network hiccups)
   if (reason && reason.code === 'EFATAL') {
     return;
   }
   
-  // AI Analysis
-  const analysis = aiMonitor.analyzeError(reason, { source: 'unhandled_rejection' });
+  // AI Analysis dengan Groq
+  const analysis = await aiMonitor.analyzeErrorWithGroq(reason, { source: 'unhandled_rejection' });
   
   logger.error('Unhandled Promise Rejection', { 
     reason: reason, 

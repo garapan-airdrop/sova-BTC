@@ -2,7 +2,7 @@ const logger = require('../utils/logger');
 const { validateAddress, validateTransferAmount } = require('../utils/validators');
 const { formatTokenAmount, parseTokenAmount, hasMinimumBalance } = require('../utils/formatters');
 const { GAS_SAFETY_MARGIN, DEFAULT_DECIMALS } = require('../config/constants');
-const aiMonitor = require('../services/aiMonitor');
+const aiMonitor = require('../services/aiMonitorService');
 
 function registerAdminCommands(bot, web3Service, authMiddleware) {
   const web3 = web3Service.getWeb3();

@@ -6,6 +6,144 @@ class AIMonitorService {
     this.errorPatterns = new Map();
     this.errorHistory = [];
     this.maxHistorySize = 100;
+    this.groqApiKey = process.env.GROQ_API_KEY || null;
+    this.groqModels = [
+      {
+        name: 'llama-3.3-70b-versatile',
+        dailyLimit: 1000,
+        quality: 10,
+        description: 'Premium Quality (10/10)'
+      },
+      {
+        name: 'llama-3.1-8b-instant',
+        dailyLimit: 14400,
+        quality: 7,
+        description: 'Standard Quality (7/10)'
+      }
+    ];
+    this.currentModelIndex = 0;
+  }
+
+  async analyzeErrorWithGroq(error, context = {}) {
+    if (!this.groqApiKey) {
+      logger.warn('GROQ_API_KEY not set, using rule-based analysis');
+      return this.analyzeError(error, context);
+    }
+
+    try {
+      const errorMsg = error.message || String(error);
+      const prompt = `Analyze this error from a Telegram bot for sovaBTC faucet:
+
+Error: ${errorMsg}
+Context: ${JSON.stringify(context)}
+
+Provide:
+1. Error Type (one line)
+2. Severity (CRITICAL/MEDIUM/LOW)
+3. Possible Causes (max 3 bullet points)
+4. Suggested Fixes (max 3 actionable steps)
+5. Prevention Tips (max 2 tips)
+
+Keep response concise and in Bahasa Indonesia.`;
+
+      const model = this.groqModels[this.currentModelIndex];
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.groqApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model.name,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert blockchain developer assistant specializing in Ethereum, Web3, and Telegram bots. Provide concise, actionable advice in Bahasa Indonesia.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 500
+        })
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          // Rate limit, try next model
+          this.currentModelIndex = (this.currentModelIndex + 1) % this.groqModels.length;
+          logger.warn(`Rate limited on ${model.name}, switching to next model`);
+          return await this.analyzeErrorWithGroq(error, context);
+        }
+        throw new Error(`Groq API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices[0].message.content;
+
+      // Parse AI response
+      const analysis = this.parseGroqResponse(aiResponse, error);
+      this.recordError(error, analysis);
+
+      logger.info('Error analyzed with Groq AI', { 
+        model: model.name,
+        errorType: analysis.errorType 
+      });
+
+      return analysis;
+
+    } catch (groqError) {
+      logger.error('Groq AI analysis failed, falling back to rule-based', { 
+        error: groqError.message 
+      });
+      return this.analyzeError(error, context);
+    }
+  }
+
+  parseGroqResponse(aiResponse, error) {
+    const lines = aiResponse.split('\n').filter(l => l.trim());
+    
+    return {
+      errorType: this.extractSection(lines, 'Error Type', 'type') || this.classifyError(error),
+      severity: this.extractSection(lines, 'Severity', 'severity') || this.determineSeverity(error),
+      possibleCauses: this.extractBullets(lines, 'Possible Causes') || this.identifyPossibleCauses(error, {}),
+      suggestedFixes: this.extractBullets(lines, 'Suggested Fixes') || this.suggestFixes(error, {}),
+      preventionTips: this.extractBullets(lines, 'Prevention') || this.getPreventionTips(error),
+      timestamp: new Date().toISOString(),
+      aiGenerated: true
+    };
+  }
+
+  extractSection(lines, keyword, type = 'text') {
+    const line = lines.find(l => l.includes(keyword));
+    if (!line) return null;
+    
+    if (type === 'severity') {
+      if (line.includes('CRITICAL')) return 'CRITICAL';
+      if (line.includes('MEDIUM')) return 'MEDIUM';
+      if (line.includes('LOW')) return 'LOW';
+    }
+    
+    return line.split(':')[1]?.trim() || null;
+  }
+
+  extractBullets(lines, keyword) {
+    const startIdx = lines.findIndex(l => l.includes(keyword));
+    if (startIdx === -1) return [];
+    
+    const bullets = [];
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.match(/^\d+\./) || line.startsWith('-') || line.startsWith('•')) {
+        bullets.push(line.replace(/^[\d\.\-•]\s*/, '').trim());
+      } else if (bullets.length > 0 && !line) {
+        break;
+      }
+    }
+    
+    return bullets.length > 0 ? bullets : null;
   }
 
   analyzeError(error, context = {}) {
@@ -15,7 +153,8 @@ class AIMonitorService {
       possibleCauses: this.identifyPossibleCauses(error, context),
       suggestedFixes: this.suggestFixes(error, context),
       preventionTips: this.getPreventionTips(error),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      aiGenerated: false
     };
 
     this.recordError(error, analysis);
@@ -54,13 +193,13 @@ class AIMonitorService {
     const errorMsg = error.message || String(error);
     
     if (errorMsg.includes('EFATAL') || errorMsg.includes('polling')) {
-      return 'LOW'; // Auto-recoverable
+      return 'LOW';
     }
     if (errorMsg.includes('insufficient funds')) {
-      return 'MEDIUM'; // Needs manual action
+      return 'MEDIUM';
     }
     if (errorMsg.includes('PRIVATE_KEY') || errorMsg.includes('decrypt')) {
-      return 'CRITICAL'; // Bot can't operate
+      return 'CRITICAL';
     }
     
     return 'MEDIUM';
@@ -120,7 +259,7 @@ class AIMonitorService {
     }
 
     if (errorMsg.includes('insufficient funds')) {
-      fixes.push('💰 Top up main wallet (0x3199782bcd48686B71dfaC8e74c16625f951Cc7F)');
+      fixes.push('💰 Top up main wallet');
       fixes.push('💰 Gunakan /collectgas untuk collect ETH dari wallets');
       fixes.push('💰 Cek balance dengan /balance command');
     }
@@ -200,14 +339,19 @@ class AIMonitorService {
       totalErrors: this.errorHistory.length,
       recentErrors: this.errorHistory.slice(-10),
       errorsByType: Object.fromEntries(this.errorPatterns),
-      criticalErrors: this.errorHistory.filter(e => e.analysis.severity === 'CRITICAL').length
+      criticalErrors: this.errorHistory.filter(e => e.analysis.severity === 'CRITICAL').length,
+      aiAnalyzedCount: this.errorHistory.filter(e => e.analysis.aiGenerated).length
     };
 
     return stats;
   }
 
   formatAnalysisForTelegram(analysis, error) {
-    let message = `🚨 *Error Detected & Analyzed*\n\n`;
+    let message = `🚨 *Error Detected & Analyzed*\n`;
+    if (analysis.aiGenerated) {
+      message += `🤖 _Analyzed by Groq AI_\n`;
+    }
+    message += `\n`;
     message += `❌ *Error Type:* ${analysis.errorType}\n`;
     message += `⚠️ *Severity:* ${analysis.severity}\n\n`;
     
